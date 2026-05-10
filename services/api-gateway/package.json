@@ -1,0 +1,31 @@
+{
+  "name": "orion-api-gateway",
+  "version": "1.0.0",
+  "description": "Orion IDE — API Gateway: single entry point, JWT validation, routing, rate limiting",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "jest --coverage"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^8.0.0",
+    "http-proxy-middleware": "^3.0.0",
+    "jsonwebtoken": "^9.0.0",
+    "morgan": "^1.10.0",
+    "uuid": "^10.0.0",
+    "winston": "^3.14.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.1.0",
+    "supertest": "^7.0.0"
+  },
+  "keywords": ["orion", "api-gateway"],
+  "license": "MIT"
+}
