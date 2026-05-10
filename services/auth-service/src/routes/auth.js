@@ -34,7 +34,7 @@ const logger = createLogger('auth-service');
 const router = express.Router();
 
 // ── Constants ────────────────────────────────────────────────────────────
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3010';
 const COOKIE_NAME = 'orion_refresh_token';
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -95,6 +95,15 @@ router.get('/google/callback',
 
       // Set refresh token as httpOnly cookie
       res.cookie(COOKIE_NAME, refreshToken, COOKIE_OPTIONS);
+
+      // Store Google refresh token in Redis for later token refresh
+      if (user.googleRefreshToken) {
+        await redis.set(
+          `google:refresh:${user.userId}`,
+          user.googleRefreshToken,
+          { EX: 30 * 24 * 60 * 60 } // 30 days
+        );
+      }
 
       // Ensure OrionIDE folder exists (fire and forget — non-blocking)
       ensureOrionFolder(user.googleAccessToken, user.userId).catch(() => {});
@@ -164,13 +173,36 @@ router.post('/refresh', async (req, res) => {
       });
     }
 
-    // Issue new access token with the same user data
+    // Refresh the Google access token using stored Google refresh token
+    let freshGoogleToken = decoded.googleAccessToken;
+    try {
+      const googleRefreshToken = await redis.get(`google:refresh:${decoded.userId}`);
+      if (googleRefreshToken) {
+        const { google } = require('googleapis');
+        const oauth2Client = new google.auth.OAuth2(
+          process.env.GOOGLE_CLIENT_ID,
+          process.env.GOOGLE_CLIENT_SECRET,
+        );
+        oauth2Client.setCredentials({ refresh_token: googleRefreshToken });
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        freshGoogleToken = credentials.access_token;
+        logger.debug('Google access token refreshed', { userId: decoded.userId });
+      }
+    } catch (refreshErr) {
+      logger.warn('Could not refresh Google access token (non-fatal)', {
+        userId: decoded.userId,
+        error: refreshErr.message,
+      });
+      // Non-fatal: use existing token (works for up to 1 hour from last login)
+    }
+
+    // Issue new access token with fresh Google access token
     const newAccessToken = generateAccessToken({
       userId: decoded.userId,
       email: decoded.email,
       name: decoded.name,
       picture: decoded.picture,
-      googleAccessToken: decoded.googleAccessToken,
+      googleAccessToken: freshGoogleToken,
     });
 
     logger.info('Access token refreshed', { userId: decoded.userId });

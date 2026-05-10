@@ -20,6 +20,7 @@
     "axios": "^1.7.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "googleapis": "^140.0.0",
     "morgan": "^1.10.0",
     "winston": "^3.14.0"
   },
