@@ -66,13 +66,7 @@ app.options('*', cors(corsConfig));
 app.use(requestLogger);
 
 // ──────────────────────────────────────────────────────────────────────────
-// 4. JSON BODY PARSER (only for non-proxy routes like /health)
-// Note: Proxy routes handle their own body parsing via http-proxy-middleware
-// ──────────────────────────────────────────────────────────────────────────
-app.use(express.json({ limit: '10mb' }));
-
-// ──────────────────────────────────────────────────────────────────────────
-// 5. GLOBAL RATE LIMITER — 100 req/min per IP
+// 4. GLOBAL RATE LIMITER — 100 req/min per IP
 // ──────────────────────────────────────────────────────────────────────────
 app.use(globalLimiter);
 
@@ -118,7 +112,13 @@ app.use(authMiddleware);
 mountAllRoutes(app);
 
 // ──────────────────────────────────────────────────────────────────────────
-// 9. 404 HANDLER — unknown routes
+// 9. JSON BODY PARSER — placed AFTER proxy routes so http-proxy-middleware
+//    receives the raw request body stream. Only needed by non-proxy routes.
+// ──────────────────────────────────────────────────────────────────────────
+app.use(express.json({ limit: '10mb' }));
+
+// ──────────────────────────────────────────────────────────────────────────
+// 10. 404 HANDLER — unknown routes
 // ──────────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({
