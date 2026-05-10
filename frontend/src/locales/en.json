@@ -1,0 +1,55 @@
+{
+  "app": {
+    "name": "Orion IDE",
+    "tagline": "AI-Powered Cloud IDE"
+  },
+  "auth": {
+    "login": "Sign in with Google",
+    "logout": "Logout",
+    "welcome": "Welcome, {{name}}"
+  },
+  "editor": {
+    "untitled": "Untitled",
+    "unsaved": "Unsaved changes",
+    "save": "Save",
+    "close": "Close"
+  },
+  "fileTree": {
+    "newFile": "New File",
+    "newFolder": "New Folder",
+    "rename": "Rename",
+    "delete": "Delete",
+    "noFiles": "No files yet"
+  },
+  "terminal": {
+    "title": "Terminal",
+    "clear": "Clear",
+    "running": "Running...",
+    "completed": "Execution completed",
+    "failed": "Execution failed"
+  },
+  "agent": {
+    "title": "AI Agent",
+    "startPipeline": "Start Agent Pipeline",
+    "goalPlaceholder": "Describe what you want to build...",
+    "approve": "Approve",
+    "reject": "Reject",
+    "planning": "Planning...",
+    "designing": "Designing...",
+    "implementing": "Implementing...",
+    "reviewing": "Reviewing...",
+    "writingFiles": "Writing files...",
+    "preparingRun": "Preparing to run..."
+  },
+  "settings": {
+    "title": "Settings",
+    "theme": "Theme",
+    "fontSize": "Font Size",
+    "language": "Language"
+  },
+  "errors": {
+    "generic": "Something went wrong",
+    "networkError": "Network error. Please check your connection.",
+    "unauthorized": "Session expired. Please log in again."
+  }
+}
