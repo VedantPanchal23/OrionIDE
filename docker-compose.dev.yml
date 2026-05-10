@@ -1,0 +1,226 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Orion IDE — Development Docker Compose
+# ─────────────────────────────────────────────────────────────────────────────
+# All service ports exposed for local development.
+# Hot reload via nodemon for all backend services (source mounted as volumes).
+# Environment variables loaded from root .env file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: '3.8'
+
+services:
+  # ── Redis ───────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: orion-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - orion-network
+
+  # ── API Gateway ─────────────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: orion-api-gateway-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+    volumes:
+      - ./services/api-gateway/src:/app/src
+      - ./shared:/shared
+    command: npx nodemon src/app.js
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - orion-network
+
+  # ── Auth Service ────────────────────────────────────────────────────────
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: orion-auth-service-dev
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+    volumes:
+      - ./services/auth-service/src:/app/src
+      - ./shared:/shared
+    command: npx nodemon src/app.js
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - orion-network
+
+  # ── Drive Service ───────────────────────────────────────────────────────
+  drive-service:
+    build:
+      context: ./services/drive-service
+      dockerfile: Dockerfile
+    container_name: orion-drive-service-dev
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+    volumes:
+      - ./services/drive-service/src:/app/src
+      - ./shared:/shared
+    command: npx nodemon src/app.js
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - orion-network
+
+  # ── Editor Service ──────────────────────────────────────────────────────
+  editor-service:
+    build:
+      context: ./services/editor-service
+      dockerfile: Dockerfile
+    container_name: orion-editor-service-dev
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - PORT=3003
+    volumes:
+      - ./services/editor-service/src:/app/src
+      - ./shared:/shared
+    command: npx nodemon src/app.js
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - orion-network
+
+  # ── Execution Service ──────────────────────────────────────────────────
+  execution-service:
+    build:
+      context: ./services/execution-service
+      dockerfile: Dockerfile
+    container_name: orion-execution-service-dev
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - PORT=3004
+    volumes:
+      - ./services/execution-service/src:/app/src
+      - ./shared:/shared
+    command: npx nodemon src/app.js
+    depends_on:
+      - piston
+    networks:
+      - orion-network
+
+  # ── Agent Service ──────────────────────────────────────────────────────
+  agent-service:
+    build:
+      context: ./services/agent-service
+      dockerfile: Dockerfile
+    container_name: orion-agent-service-dev
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - PORT=3005
+    volumes:
+      - ./services/agent-service/src:/app/src
+      - ./shared:/shared
+    command: npx nodemon src/app.js
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - orion-network
+
+  # ── Notification Service ───────────────────────────────────────────────
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: orion-notification-service-dev
+    restart: unless-stopped
+    ports:
+      - "3006:3006"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - PORT=3006
+    volumes:
+      - ./services/notification-service/src:/app/src
+      - ./shared:/shared
+    command: npx nodemon src/app.js
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - orion-network
+
+  # ── Piston (Code Execution Sandbox) ─────────────────────────────────────
+  piston:
+    image: ghcr.io/engineer-man/piston
+    container_name: orion-piston-dev
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "2000:2000"
+    tmpfs:
+      - /piston/jobs:exec,size=256m
+    environment:
+      - OUTPUT_MAX_SIZE=65536
+      - MAX_PROCESS_COUNT=64
+      - RUN_TIMEOUT=15000
+    volumes:
+      - piston-packages:/piston/packages
+    networks:
+      - orion-network
+
+# ── Networks ──────────────────────────────────────────────────────────────
+networks:
+  orion-network:
+    name: orion-network
+    driver: bridge
+
+# ── Volumes ───────────────────────────────────────────────────────────────
+volumes:
+  redis-data:
+    name: orion-redis-data
+  piston-packages:
+    name: orion-piston-packages
