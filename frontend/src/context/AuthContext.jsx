@@ -9,7 +9,7 @@
  */
 
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -30,7 +30,7 @@ export function AuthProvider({ children }) {
       return;
     }
     try {
-      const res = await axios.get('/api/auth/me', {
+      const res = await api.get('/auth/me', {
         headers: { Authorization: `Bearer ${newToken}` },
       });
       setUser(res.data.data || res.data);
@@ -47,9 +47,9 @@ export function AuthProvider({ children }) {
    */
   useEffect(() => {
     if (interceptorRef.current !== null) {
-      axios.interceptors.request.eject(interceptorRef.current);
+      api.interceptors.request.eject(interceptorRef.current);
     }
-    interceptorRef.current = axios.interceptors.request.use((config) => {
+    interceptorRef.current = api.interceptors.request.use((config) => {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }
@@ -61,8 +61,8 @@ export function AuthProvider({ children }) {
    * On mount: try silent refresh using httpOnly cookie.
    */
   useEffect(() => {
-    axios
-      .post('/api/auth/refresh', {}, { withCredentials: true })
+    api
+      .post('/auth/refresh', {})
       .then((res) => {
         const t = res.data?.data?.accessToken || res.data?.accessToken;
         if (t) return setToken(t);
@@ -76,7 +76,7 @@ export function AuthProvider({ children }) {
    */
   const logout = useCallback(async () => {
     try {
-      await axios.post('/api/auth/logout', {}, { withCredentials: true });
+      await api.post('/auth/logout', {});
     } catch {
       // Ignore — we clear local state regardless
     }
