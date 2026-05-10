@@ -1,0 +1,28 @@
+# Orion IDE — Piston Code Execution Sandbox (Standalone)
+# Self-hosted Docker container for isolated code execution.
+# Accessed ONLY by execution-service.
+
+version: '3.8'
+
+services:
+  piston:
+    image: ghcr.io/engineer-man/piston
+    container_name: orion-piston
+    restart: unless-stopped
+    ports:
+      - "2000:2000"
+    tmpfs:
+      - /piston/jobs:exec,size=256m
+    environment:
+      - OUTPUT_MAX_SIZE=65536
+      - MAX_PROCESS_COUNT=64
+      - MAX_OPEN_FILES=2048
+      - MAX_FILE_SIZE=10000000
+      - COMPILE_TIMEOUT=30000
+      - RUN_TIMEOUT=15000
+    volumes:
+      - piston-packages:/piston/packages
+
+volumes:
+  piston-packages:
+    name: orion-piston-packages
