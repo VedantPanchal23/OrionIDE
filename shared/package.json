@@ -1,0 +1,10 @@
+{
+  "name": "orion-shared",
+  "version": "1.0.0",
+  "description": "Orion IDE — Shared constants and utilities used across all services",
+  "private": true,
+  "dependencies": {
+    "winston": "^3.14.0"
+  },
+  "license": "MIT"
+}
