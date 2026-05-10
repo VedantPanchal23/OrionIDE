@@ -44,7 +44,7 @@ const useFileTree = () => {
 
     try {
       const res = await driveService.listFiles(projectFolderId);
-      const items = (res.data?.data || []).map(toNode);
+      const items = (res.data?.data?.files || res.data?.data || []).map(toNode);
 
       // Sort: folders first, then alphabetical
       items.sort((a, b) => {
@@ -90,7 +90,7 @@ const useFileTree = () => {
 
     try {
       const res = await driveService.listFiles(folderId);
-      const items = (res.data?.data || []).map(toNode);
+      const items = (res.data?.data?.files || res.data?.data || []).map(toNode);
       items.sort((a, b) => {
         if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
         return a.name.localeCompare(b.name);
