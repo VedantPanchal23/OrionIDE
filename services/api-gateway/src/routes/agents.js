@@ -25,6 +25,9 @@ const agentsProxy = createProxyMiddleware({
       if (req.user) {
         proxyReq.setHeader('X-User-Id', req.user.id || req.user.userId || '');
         proxyReq.setHeader('X-User-Email', req.user.email || '');
+        if (req.user.googleAccessToken) {
+          proxyReq.setHeader('X-Google-Access-Token', req.user.googleAccessToken);
+        }
       }
     },
     proxyRes: (proxyRes, req, res) => {
