@@ -6,29 +6,7 @@
 
 import React from 'react';
 
-const CheckCircle = () => (
-  <svg width="24" height="24" viewBox="0 0 16 16" fill="#3fb950">
-    <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L6.75 9.19 5.28 7.72a.75.75 0 00-1.06 1.06l2 2a.75.75 0 001.06 0l4.5-4.5z" />
-  </svg>
-);
-
-const FileIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 16 16" fill="#58a6ff">
-    <path fillRule="evenodd" d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V6H9.75A1.75 1.75 0 018 4.25V1.5H3.75z" />
-  </svg>
-);
-
-const TerminalIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-    <path fillRule="evenodd" d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0114.25 15H1.75A1.75 1.75 0 010 13.25V2.75zm1.75-.25a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V2.75a.25.25 0 00-.25-.25H1.75zM7.25 8a.75.75 0 01-.22.53l-2.25 2.25a.75.75 0 11-1.06-1.06L5.44 8 3.72 6.28a.75.75 0 011.06-1.06l2.25 2.25c.141.14.22.331.22.53zm1.5 1.5a.75.75 0 000 1.5h3a.75.75 0 000-1.5h-3z" />
-  </svg>
-);
-
-const RefreshIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-    <path d="M8 2.5a5.487 5.487 0 00-4.131 1.869l1.204 1.204A.25.25 0 014.896 6H1.25A.25.25 0 011 5.75V2.104a.25.25 0 01.427-.177l1.38 1.38A7.001 7.001 0 0115 8a.75.75 0 01-1.5 0A5.5 5.5 0 008 2.5zM2.5 8a.75.75 0 00-1.5 0 7.001 7.001 0 0012.193 4.693l1.38 1.38a.25.25 0 00.427-.177V10.25a.25.25 0 00-.25-.25h-3.646a.25.25 0 00-.177.427l1.204 1.204A5.501 5.501 0 012.5 8z" />
-  </svg>
-);
+import { CheckCircle2, FileCode2, TerminalSquare, RefreshCw } from 'lucide-react';
 
 const PipelineComplete = ({ session, onReset }) => {
   if (!session) return null;
@@ -46,7 +24,7 @@ const PipelineComplete = ({ session, onReset }) => {
         padding: '16px 20px', background: '#0d2117', border: '1px solid #23863644',
         borderRadius: 10,
       }}>
-        <CheckCircle />
+        <CheckCircle2 size={24} color="#3fb950" />
         <div>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#3fb950' }}>
             Build Complete
@@ -78,7 +56,7 @@ const PipelineComplete = ({ session, onReset }) => {
                 fontSize: 12, color: '#c9d1d9',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <FileIcon />
+                  <FileCode2 size={12} color="#58a6ff" />
                   <code style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{file.path}</code>
                 </div>
                 <span style={{
@@ -108,7 +86,7 @@ const PipelineComplete = ({ session, onReset }) => {
             padding: 12,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-              <TerminalIcon />
+              <TerminalSquare size={14} color={hasError || execResult.exitCode !== 0 ? '#f85149' : '#3fb950'} />
               <span style={{
                 fontSize: 12, fontWeight: 600,
                 color: hasError || execResult.exitCode !== 0 ? '#f85149' : '#3fb950',
@@ -147,7 +125,7 @@ const PipelineComplete = ({ session, onReset }) => {
             fontSize: 13, fontWeight: 600, fontFamily: "'Inter', sans-serif",
           }}
         >
-          <RefreshIcon />
+          <RefreshCw size={14} />
           New Project
         </button>
       </div>

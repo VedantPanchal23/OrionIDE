@@ -7,18 +7,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { getLanguageByFileName, getExecutableLanguages, getAllLanguages, DEFAULT_LANGUAGE } from '../../utils/languageMap';
 
-const CloseIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-    <path fillRule="evenodd" d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z" />
-  </svg>
-);
-
-const FileAddIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-    <path fillRule="evenodd" d="M3.75 1.5a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V6H9.75A1.75 1.75 0 018 4.25V1.5H3.75zm5.75.56v2.19c0 .138.112.25.25.25h2.19L9.5 2.06zM2 1.75C2 .784 2.784 0 3.75 0h5.086c.464 0 .909.184 1.237.513l3.414 3.414c.329.328.513.773.513 1.237v8.086A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z" />
-    <path d="M8 6.5a.75.75 0 01.75.75v1h1a.75.75 0 010 1.5h-1v1a.75.75 0 01-1.5 0v-1h-1a.75.75 0 010-1.5h1v-1A.75.75 0 018 6.5z" />
-  </svg>
-);
+import { X, FilePlus } from 'lucide-react';
 
 const NewFileDialog = ({ isOpen, onClose, onCreate }) => {
   const [fileName, setFileName] = useState('');
@@ -74,11 +63,11 @@ const NewFileDialog = ({ isOpen, onClose, onCreate }) => {
           padding: '14px 18px', borderBottom: '1px solid #21262d',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <FileAddIcon />
+            <FilePlus size={16} />
             <span style={{ fontSize: 14, fontWeight: 600, color: '#c9d1d9' }}>New File</span>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#7d8590', cursor: 'pointer', padding: 4 }}>
-            <CloseIcon />
+            <X size={14} />
           </button>
         </div>
 

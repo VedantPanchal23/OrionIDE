@@ -13,19 +13,7 @@ import FileAgentStatus from './FileAgentStatus';
 import PipelineComplete from './PipelineComplete';
 import useAgentPipeline from '../../hooks/useAgentPipeline';
 
-/* ── SVG Icons ────────────────────────────────────────────────────────── */
-
-const CheckIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-    <path fillRule="evenodd" d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
-  </svg>
-);
-
-const SpinnerIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" style={{ animation: 'spin 1s linear infinite' }}>
-    <path d="M8 2.5a5.487 5.487 0 00-4.131 1.869l1.204 1.204A.25.25 0 014.896 6H1.25A.25.25 0 011 5.75V2.104a.25.25 0 01.427-.177l1.38 1.38A7.001 7.001 0 0115 8a.75.75 0 01-1.5 0A5.5 5.5 0 008 2.5z" />
-  </svg>
-);
+import { Check, Loader2 } from 'lucide-react';
 
 /* ── Steps ─────────────────────────────────────────────────────────────── */
 
@@ -225,7 +213,7 @@ const AgentPanel = () => {
                 <React.Fragment key={step.num}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 3, opacity: status === 'pending' ? 0.4 : 1 }}>
                     <div style={{ width: 20, height: 20, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: bgColor, fontSize: 9, fontWeight: 700, color: '#fff' }}>
-                      {status === 'approved' ? <CheckIcon /> : status === 'running' ? <SpinnerIcon /> : step.num}
+                      {status === 'approved' ? <Check size={12} /> : status === 'running' ? <Loader2 size={12} className="spin" /> : step.num}
                     </div>
                     <span style={{ fontSize: 9, fontWeight: 500, color: getStatusColor(status), whiteSpace: 'nowrap' }}>{step.label}</span>
                   </div>
@@ -242,7 +230,7 @@ const AgentPanel = () => {
                 Step {session.currentStep}: {currentStep?.label || 'Complete'}
               </span>
               <div style={{ fontSize: 11, color: getStatusColor(getStepStatus(session.currentStep)), display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                {getStepStatus(session.currentStep) === 'running' && <SpinnerIcon />}
+                {getStepStatus(session.currentStep) === 'running' && <Loader2 size={12} className="spin" />}
                 {getStatusLabel(getStepStatus(session.currentStep))}
               </div>
               {session.currentStep === 3 && session.implementer?.totalFiles > 0 && (
@@ -302,7 +290,7 @@ const AgentPanel = () => {
             {/* Thinking / Empty state */}
             {getStepStatus(session.currentStep) === 'running' && !session[currentStep?.key]?.output && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12 }}>
-                <SpinnerIcon />
+                <Loader2 size={24} color="#58a6ff" className="spin" />
                 <span style={{ color: '#7d8590', fontSize: 13 }}>{currentStep?.label} is thinking...</span>
               </div>
             )}
@@ -336,7 +324,7 @@ const AgentPanel = () => {
                 }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = '#2ea043'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = '#238636'; }}
-                ><CheckIcon /> Approve</button>
+                ><Check size={16} /> Approve</button>
                 <button onClick={() => setShowRejectInput(!showRejectInput)} style={{
                   flex: 1, padding: '10px 16px', background: showRejectInput ? '#21262d' : '#da3633', color: '#fff', border: 'none', borderRadius: 6,
                   cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'Inter', sans-serif", transition: 'background 0.15s',

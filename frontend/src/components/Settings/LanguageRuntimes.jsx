@@ -8,23 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { getExecutableLanguages } from '../../utils/languageMap';
 import api from '../../services/api';
 
-const CheckCircle = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="#3fb950">
-    <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zm3.78-9.72a.75.75 0 00-1.06-1.06L6.75 9.19 5.28 7.72a.75.75 0 00-1.06 1.06l2 2a.75.75 0 001.06 0l4.5-4.5z" />
-  </svg>
-);
-
-const AlertIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="#f85149">
-    <path fillRule="evenodd" d="M2.343 13.657A8 8 0 1113.657 2.343 8 8 0 012.343 13.657zM6.03 4.97a.75.75 0 00-1.06 1.06L6.94 8 4.97 9.97a.75.75 0 101.06 1.06L8 9.06l1.97 1.97a.75.75 0 101.06-1.06L9.06 8l1.97-1.97a.75.75 0 10-1.06-1.06L8 6.94 6.03 4.97z" />
-  </svg>
-);
-
-const RefreshIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-    <path d="M8 2.5a5.487 5.487 0 00-4.131 1.869l1.204 1.204A.25.25 0 014.896 6H1.25A.25.25 0 011 5.75V2.104a.25.25 0 01.427-.177l1.38 1.38A7.001 7.001 0 0115 8a.75.75 0 01-1.5 0A5.5 5.5 0 008 2.5z" />
-  </svg>
-);
+import { CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react';
 
 const LanguageRuntimes = () => {
   const [statuses, setStatuses] = useState({});
@@ -70,7 +54,7 @@ const LanguageRuntimes = () => {
             fontSize: 12, fontWeight: 500,
           }}
         >
-          <RefreshIcon />
+          <RefreshCw size={14} />
           Check Status
         </button>
       </div>
@@ -119,9 +103,9 @@ const LanguageRuntimes = () => {
                 {!statusKnown ? (
                   <span style={{ fontSize: 11, color: '#484f58' }}>--</span>
                 ) : available ? (
-                  <CheckCircle />
+                  <CheckCircle2 size={14} color="#3fb950" />
                 ) : (
-                  <AlertIcon />
+                  <AlertTriangle size={14} color="#f85149" />
                 )}
               </div>
             </div>

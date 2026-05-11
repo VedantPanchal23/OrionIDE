@@ -7,26 +7,7 @@
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 
-/* ── SVG Icons ────────────────────────────────────────────────────────── */
-
-const TrashIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-    <path fillRule="evenodd" d="M6.5 1.75a.25.25 0 01.25-.25h2.5a.25.25 0 01.25.25V3h-3V1.75zm4.5 0V3h2.25a.75.75 0 010 1.5H2.75a.75.75 0 010-1.5H5V1.75C5 .784 5.784 0 6.75 0h2.5C10.216 0 11 .784 11 1.75zM4.496 6.675a.75.75 0 10-1.492.15l.66 6.6A1.75 1.75 0 005.405 15h5.19a1.75 1.75 0 001.741-1.575l.66-6.6a.75.75 0 00-1.492-.15l-.66 6.6a.25.25 0 01-.249.225h-5.19a.25.25 0 01-.249-.225l-.66-6.6z" />
-  </svg>
-);
-
-const CopyIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-    <path fillRule="evenodd" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z" />
-    <path fillRule="evenodd" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z" />
-  </svg>
-);
-
-const TerminalIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-    <path fillRule="evenodd" d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0114.25 15H1.75A1.75 1.75 0 010 13.25V2.75zm1.75-.25a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 00.25-.25V2.75a.25.25 0 00-.25-.25H1.75zM7.25 8a.75.75 0 01-.22.53l-2.25 2.25a.75.75 0 11-1.06-1.06L5.44 8 3.72 6.28a.75.75 0 011.06-1.06l2.25 2.25A.75.75 0 017.25 8zm1.5 1.5a.75.75 0 000 1.5h3a.75.75 0 000-1.5h-3z" />
-  </svg>
-);
+import { Trash2, Copy, TerminalSquare } from 'lucide-react';
 
 /* ── Line color map ───────────────────────────────────────────────────── */
 
@@ -126,7 +107,7 @@ const Terminal = ({ lines, isRunning, onClear }) => {
           color: '#c9d1d9',
           fontFamily: "'Inter', sans-serif",
         }}>
-          <TerminalIcon />
+          <TerminalSquare size={14} />
           Terminal
           {isRunning && (
             <span style={{
@@ -158,7 +139,7 @@ const Terminal = ({ lines, isRunning, onClear }) => {
             onMouseEnter={(e) => { if (lines.length > 0) e.currentTarget.style.color = '#c9d1d9'; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = copied ? '#3fb950' : '#7d8590'; }}
           >
-            <CopyIcon />
+            <Copy size={14} />
           </button>
           <button
             onClick={onClear}
@@ -179,7 +160,7 @@ const Terminal = ({ lines, isRunning, onClear }) => {
             onMouseEnter={(e) => { if (lines.length > 0) e.currentTarget.style.color = '#f85149'; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = '#7d8590'; }}
           >
-            <TrashIcon />
+            <Trash2 size={14} />
           </button>
         </div>
       </div>
@@ -207,7 +188,7 @@ const Terminal = ({ lines, isRunning, onClear }) => {
             height: '100%',
             gap: 8,
           }}>
-            <TerminalIcon />
+            <TerminalSquare size={14} />
             Run your code to see output here
           </div>
         ) : (

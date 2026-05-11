@@ -9,55 +9,16 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useEditor } from '../../context/EditorContext';
 import { getLanguageFromFileName } from '../../utils/languageMap';
 
-/* ── SVG Icons ────────────────────────────────────────────────────────── */
-
-const ChevronRight = () => (
-  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-    <path fillRule="evenodd" d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z" />
-  </svg>
-);
-
-const ChevronDown = () => (
-  <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
-    <path fillRule="evenodd" d="M12.78 6.22a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06 0L3.22 7.28a.75.75 0 011.06-1.06L8 9.94l3.72-3.72a.75.75 0 011.06 0z" />
-  </svg>
-);
-
-const FolderClosedIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="#7d8590">
-    <path d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25v-8.5A1.75 1.75 0 0014.25 3H7.5a.25.25 0 01-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75z" />
-  </svg>
-);
-
-const FolderOpenIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="#58a6ff">
-    <path d="M.513 1.513A1.75 1.75 0 011.75 1h3.5c.55 0 1.07.26 1.4.7l.9 1.2a.25.25 0 00.2.1h6.5A1.75 1.75 0 0116 4.75v8.5A1.75 1.75 0 0114.25 15H1.75A1.75 1.75 0 010 13.25V2.75c0-.464.184-.91.513-1.237z" />
-  </svg>
-);
-
-const FileIcon = ({ color }) => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill={color || '#7d8590'}>
-    <path fillRule="evenodd" d="M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V6H9.75A1.75 1.75 0 018 4.25V1.5H3.75zm5.75.56v2.19c0 .138.112.25.25.25h2.19L9.5 2.06zM2 1.75C2 .784 2.784 0 3.75 0h5.086c.464 0 .909.184 1.237.513l3.414 3.414c.329.328.513.773.513 1.237v8.086A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z" />
-  </svg>
-);
-
-const RefreshIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-    <path d="M8 2.5a5.487 5.487 0 00-4.131 1.869l1.204 1.204A.25.25 0 014.896 6H1.25A.25.25 0 011 5.75V2.104a.25.25 0 01.427-.177l1.38 1.38A7.001 7.001 0 0115 8a.75.75 0 01-1.5 0A5.5 5.5 0 008 2.5zM2.5 8a.75.75 0 00-1.5 0 7.001 7.001 0 0012.193 4.693l1.38 1.38a.25.25 0 00.427-.177V10.25a.25.25 0 00-.25-.25h-3.646a.25.25 0 00-.177.427l1.204 1.204A5.501 5.501 0 012.5 8z" />
-  </svg>
-);
-
-const NewFileIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-    <path fillRule="evenodd" d="M3.75 1.5a.25.25 0 00-.25.25v12.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V6H9.75A1.75 1.75 0 018 4.25V1.5H3.75zM2 1.75C2 .784 2.784 0 3.75 0h5.086c.464 0 .909.184 1.237.513l3.414 3.414c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0112.25 16h-8.5A1.75 1.75 0 012 14.25V1.75zM8 8a.75.75 0 01.75.75v1.5h1.5a.75.75 0 010 1.5h-1.5v1.5a.75.75 0 01-1.5 0v-1.5h-1.5a.75.75 0 010-1.5h1.5v-1.5A.75.75 0 018 8z" />
-  </svg>
-);
-
-const NewFolderIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-    <path d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25v-8.5A1.75 1.75 0 0014.25 3H7.5a.25.25 0 01-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75zM8 8a.75.75 0 01.75.75v1.5h1.5a.75.75 0 010 1.5h-1.5v1.5a.75.75 0 01-1.5 0v-1.5h-1.5a.75.75 0 010-1.5h1.5v-1.5A.75.75 0 018 8z" />
-  </svg>
-);
+import {
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  FolderOpen,
+  FileCode2,
+  RefreshCw,
+  FilePlus,
+  FolderPlus
+} from 'lucide-react';
 
 /* ── Context Menu ─────────────────────────────────────────────────────── */
 
@@ -144,8 +105,8 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
 
   const contextOptions = node.isFolder
     ? [
-        { label: 'New File', icon: <NewFileIcon />, action: () => onCreateItem(node.id, 'file') },
-        { label: 'New Folder', icon: <NewFolderIcon />, action: () => onCreateItem(node.id, 'folder') },
+        { label: 'New File', icon: <FilePlus size={14} />, action: () => onCreateItem(node.id, 'file') },
+        { label: 'New Folder', icon: <FolderPlus size={14} />, action: () => onCreateItem(node.id, 'folder') },
         { separator: true },
         { label: 'Rename', action: () => { setRenameValue(node.name); setIsRenaming(true); } },
         { label: 'Delete', action: () => onDelete(node.id, node.name), danger: true },
@@ -173,14 +134,14 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
       >
         {/* Chevron for folders */}
         <span style={{ width: 14, flexShrink: 0, display: 'flex', alignItems: 'center', opacity: node.isFolder ? 1 : 0 }}>
-          {node.isFolder && (isExpanded ? <ChevronDown /> : <ChevronRight />)}
+          {node.isFolder && (isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
         </span>
 
         {/* Icon */}
         <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
           {node.isFolder
-            ? (isExpanded ? <FolderOpenIcon /> : <FolderClosedIcon />)
-            : <FileIcon color={langInfo?.color || '#7d8590'} />
+            ? (isExpanded ? <FolderOpen size={14} color="#58a6ff" /> : <Folder size={14} color="#7d8590" />)
+            : <FileCode2 size={14} color={langInfo?.color || '#7d8590'} />
           }
         </span>
 
@@ -327,8 +288,8 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
         fontFamily: "'Inter', sans-serif", textAlign: 'center',
       }}>
         <div>
-          <FolderClosedIcon />
-          <div style={{ marginTop: 8 }}>No project open</div>
+          <Folder size={32} color="#484f58" style={{ margin: '0 auto 12px', display: 'block' }} />
+          <div>No project open</div>
         </div>
       </div>
     );
@@ -346,13 +307,13 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
         </span>
         <div style={{ display: 'flex', gap: 2 }}>
           <button title="New File" onClick={() => handleCreateItem(tree.id, 'file')} style={actionBtnStyle}>
-            <NewFileIcon />
+            <FilePlus size={14} />
           </button>
           <button title="New Folder" onClick={() => handleCreateItem(tree.id, 'folder')} style={actionBtnStyle}>
-            <NewFolderIcon />
+            <FolderPlus size={14} />
           </button>
           <button title="Refresh" onClick={onRefresh} style={actionBtnStyle}>
-            <RefreshIcon />
+            <RefreshCw size={14} />
           </button>
         </div>
       </div>

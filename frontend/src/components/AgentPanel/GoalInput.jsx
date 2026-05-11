@@ -6,19 +6,7 @@
 
 import React, { useState, useCallback } from 'react';
 
-/* ── SVG Icons ────────────────────────────────────────────────────────── */
-
-const RocketIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-    <path fillRule="evenodd" d="M14.064 0a8.75 8.75 0 00-6.187 2.563l-.459.458c-.314.314-.616.641-.904.979H3.31a1.75 1.75 0 00-1.49.833L.11 7.607a.75.75 0 00.418 1.11l3.102.954c.037.051.079.1.124.145l2.429 2.428c.046.046.094.088.145.125l.954 3.102a.75.75 0 001.11.418l2.774-1.707a1.75 1.75 0 00.833-1.49V9.485c.338-.288.665-.59.979-.904l.458-.459A8.75 8.75 0 0016 1.936V1.75A1.75 1.75 0 0014.25 0h-.186zM10.5 5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-1.482 7.482a.75.75 0 00-1.06 0 5.78 5.78 0 01-2.91 1.55.75.75 0 00.244 1.476 7.262 7.262 0 003.726-1.966.75.75 0 000-1.06z" />
-  </svg>
-);
-
-const SparkleIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-    <path d="M7.53 1.282a.5.5 0 01.94 0l1.478 4.03a.5.5 0 00.296.296l4.03 1.478a.5.5 0 010 .94l-4.03 1.478a.5.5 0 00-.296.296l-1.478 4.03a.5.5 0 01-.94 0l-1.478-4.03a.5.5 0 00-.296-.296l-4.03-1.478a.5.5 0 010-.94l4.03-1.478a.5.5 0 00.296-.296L7.53 1.282z" />
-  </svg>
-);
+import { Rocket, Sparkles } from 'lucide-react';
 
 const MAX_CHARS = 500;
 
@@ -49,7 +37,7 @@ const GoalInput = ({ onStart, isRunning }) => {
     <div style={{ padding: '24px 20px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-        <SparkleIcon />
+        <Sparkles size={18} color="#58a6ff" />
         <span style={{ fontSize: 14, fontWeight: 600, color: '#c9d1d9' }}>
           What would you like to build?
         </span>
@@ -160,7 +148,7 @@ const GoalInput = ({ onStart, isRunning }) => {
           }
         }}
       >
-        <RocketIcon />
+        <Rocket size={16} />
         {isRunning ? 'Building...' : 'Start Building'}
       </button>
     </div>

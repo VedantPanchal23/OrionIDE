@@ -7,6 +7,8 @@
 
 import React from 'react';
 
+import { Code2 } from 'lucide-react';
+
 const LoginPage = () => {
   const handleLogin = () => {
     window.location.href = '/api/auth/google';
@@ -15,25 +17,22 @@ const LoginPage = () => {
   return (
     <div style={{
       width: '100vw', height: '100vh', display: 'flex', alignItems: 'center',
-      justifyContent: 'center', background: '#0d1117', fontFamily: "'Inter', sans-serif",
+      justifyContent: 'center', background: '#010409', fontFamily: "'Inter', sans-serif",
     }}>
       <div style={{
         width: 420, padding: '48px 40px', borderRadius: 16,
-        background: 'linear-gradient(145deg, #161b22 0%, #0d1117 100%)',
-        border: '1px solid #21262d', textAlign: 'center',
-        boxShadow: '0 16px 48px rgba(0, 0, 0, 0.4)',
+        background: 'linear-gradient(145deg, #0d1117 0%, #161b22 100%)',
+        border: '1px solid #30363d', textAlign: 'center',
+        boxShadow: '0 16px 48px rgba(0, 0, 0, 0.6)',
       }}>
         {/* Logo */}
         <div style={{
           width: 64, height: 64, margin: '0 auto 24px', borderRadius: 16,
-          background: 'linear-gradient(135deg, #58a6ff 0%, #388bfd 100%)',
+          background: 'linear-gradient(135deg, #1f6feb 0%, #3fb950 100%)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 4px 16px rgba(88, 166, 255, 0.3)',
+          boxShadow: '0 4px 20px rgba(31, 111, 235, 0.4)',
         }}>
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" 
-                  stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-          </svg>
+          <Code2 size={36} color="white" strokeWidth={2.5} />
         </div>
 
         <h1 style={{
@@ -44,7 +43,7 @@ const LoginPage = () => {
         </h1>
 
         <p style={{
-          fontSize: 14, color: '#7d8590', margin: '0 0 36px', lineHeight: 1.5,
+          fontSize: 14, color: '#8b949e', margin: '0 0 36px', lineHeight: 1.5,
         }}>
           AI-powered cloud IDE with 18 languages,<br />
           Google Drive integration, and real-time execution.
@@ -62,8 +61,8 @@ const LoginPage = () => {
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.background = '#30363d';
-            e.currentTarget.style.borderColor = '#58a6ff';
-            e.currentTarget.style.boxShadow = '0 0 0 1px #58a6ff';
+            e.currentTarget.style.borderColor = '#1f6feb';
+            e.currentTarget.style.boxShadow = '0 0 0 1px #1f6feb';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.background = '#21262d';

@@ -16,29 +16,14 @@ import AgentPanel from '../AgentPanel/AgentPanel';
 import useTerminal from '../../hooks/useTerminal';
 import useFileTree from '../../hooks/useFileTree';
 
-/* ── SVG Icons ────────────────────────────────────────────────────────── */
-const Icon = ({ d, active }) => (
-  <svg width="20" height="20" viewBox="0 0 16 16" fill={active ? '#c9d1d9' : '#7d8590'}><path fillRule="evenodd" d={d} /></svg>
-);
+import { Files, Search, GitBranch, PlayCircle, Bot, ArrowLeft } from 'lucide-react';
 
 const ICONS = {
-  files: "M3.75 1.5a.25.25 0 00-.25.25v11.5c0 .138.112.25.25.25h8.5a.25.25 0 00.25-.25V6H9.75A1.75 1.75 0 018 4.25V1.5H3.75zm5.75.56v2.19c0 .138.112.25.25.25h2.19L9.5 2.06zM2 1.75C2 .784 2.784 0 3.75 0h5.086c.464 0 .909.184 1.237.513l3.414 3.414c.329.328.513.773.513 1.237v8.086A1.75 1.75 0 0112.25 15h-8.5A1.75 1.75 0 012 13.25V1.75z",
-  search: "M11.5 7a4.499 4.499 0 11-8.998 0A4.499 4.499 0 0111.5 7zm-.82 4.74a6 6 0 111.06-1.06l3.04 3.04a.75.75 0 11-1.06 1.06l-3.04-3.04z",
-  git: "M11.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm-2.25.75a2.25 2.25 0 113 2.122V6.5A3.5 3.5 0 019 10H6.5v1.128a2.25 2.25 0 11-1.5 0V4.872a2.25 2.25 0 111.5 0v3.628H9a2 2 0 002-2V5.372a2.25 2.25 0 01-1.5-2.122zM5.75 2.5a.75.75 0 100 1.5.75.75 0 000-1.5zm0 9.5a.75.75 0 100 1.5.75.75 0 000-1.5z",
-  run: "M1.5 8a6.5 6.5 0 1113 0 6.5 6.5 0 01-13 0zM8 0a8 8 0 100 16A8 8 0 008 0zM6.379 5.227A.25.25 0 006 5.442v5.117a.25.25 0 00.379.214l4.264-2.559a.25.25 0 000-.428L6.379 5.227z",
+  files: Files,
+  search: Search,
+  git: GitBranch,
+  run: PlayCircle,
 };
-
-const AgentIcon = ({ active }) => (
-  <svg width="20" height="20" viewBox="0 0 16 16" fill={active ? '#c9d1d9' : '#7d8590'}>
-    <path d="M5.433 2.304A4.492 4.492 0 008 3.5a4.492 4.492 0 002.567-1.196c.136.046.27.096.401.15A5.5 5.5 0 018 5a5.5 5.5 0 01-2.968-2.546c.131-.054.265-.104.401-.15zM8 6.5a6.5 6.5 0 003.25-5.75.75.75 0 00-1.064-.682A3 3 0 018 1.5 3 3 0 015.814.068a.75.75 0 00-1.064.682A6.5 6.5 0 008 6.5zM4.75 9a.75.75 0 000 1.5h6.5a.75.75 0 000-1.5h-6.5zM3.5 12.25a.75.75 0 01.75-.75h7.5a.75.75 0 010 1.5h-7.5a.75.75 0 01-.75-.75zM5.75 14a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5z" />
-  </svg>
-);
-
-const BackIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-    <path fillRule="evenodd" d="M7.78 12.53a.75.75 0 01-1.06 0L2.47 8.28a.75.75 0 010-1.06l4.25-4.25a.75.75 0 011.06 1.06L4.81 7h7.44a.75.75 0 010 1.5H4.81l2.97 2.97a.75.75 0 010 1.06z" />
-  </svg>
-);
 
 const PANELS = [
   { id: 'files', icon: ICONS.files, title: 'Explorer' },
@@ -77,7 +62,7 @@ function UserMenu({ onBackToProjects }) {
           <div style={{ padding: '4px 12px 8px', fontSize: 12, color: '#7d8590' }}>{user.email}</div>
           <div style={{ borderTop: '1px solid #21262d', margin: '4px 0' }} />
           <button onClick={() => { onBackToProjects(); setOpen(false); }} style={menuBtnStyle}>
-            <BackIcon /> Switch Project
+            <ArrowLeft size={14} /> Switch Project
           </button>
           <button onClick={() => { logout(); setOpen(false); }} style={{ ...menuBtnStyle, color: '#f85149' }}>
             Sign out
@@ -157,7 +142,7 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
             onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = '#161b22'; }}
             onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
             >
-              {p.icon ? <Icon d={p.icon} active={isActive} /> : <AgentIcon active={isActive} />}
+              {p.icon ? <p.icon size={20} color={isActive ? '#c9d1d9' : '#7d8590'} /> : <Bot size={20} color={isActive ? '#c9d1d9' : '#7d8590'} />}
             </button>
           );
         })}

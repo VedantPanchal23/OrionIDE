@@ -11,15 +11,7 @@ import EditorTabs from './EditorTabs';
 import Editor from './Editor';
 import StatusBar from './StatusBar';
 
-/* ── SVG Icons ──────────────────────────────────────────────────────────── */
-
-const OrionLogo = () => (
-  <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-    <path d="M28 4 L52 28 L28 52 L4 28 Z" stroke="#30363d" strokeWidth="1.5" fill="none" />
-    <path d="M28 12 L44 28 L28 44 L12 28 Z" stroke="#484f58" strokeWidth="1" fill="none" opacity="0.5" />
-    <circle cx="28" cy="28" r="3" fill="#58a6ff" opacity="0.6" />
-  </svg>
-);
+import { Code2 } from 'lucide-react';
 
 const KbdKey = ({ children }) => (
   <kbd style={{
@@ -55,7 +47,7 @@ const EditorPane = () => {
         userSelect: 'none',
       }}>
         <div style={{ marginBottom: 24, opacity: 0.4 }}>
-          <OrionLogo />
+          <Code2 size={56} color="#30363d" strokeWidth={1} />
         </div>
         <h2 style={{
           fontSize: 20,

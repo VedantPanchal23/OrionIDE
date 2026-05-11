@@ -4,6 +4,7 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { listProjects } from '../../services/driveService';
+import { Folder, ChevronRight, Code2 } from 'lucide-react';
 
 const ProjectPicker = ({ onSelectProject, onCreateProject }) => {
   const [projects, setProjects] = useState([]);
@@ -60,9 +61,7 @@ const ProjectPicker = ({ onSelectProject, onCreateProject }) => {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: '0 4px 12px rgba(88,166,255,0.3)',
           }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" stroke="white" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-            </svg>
+            <Code2 size={24} color="white" />
           </div>
           <h2 style={{ fontSize: 22, fontWeight: 700, color: '#e6edf3', margin: 0 }}>Your Projects</h2>
           <p style={{ fontSize: 13, color: '#7d8590', margin: '6px 0 0' }}>Select a project or create a new one</p>
@@ -138,9 +137,7 @@ const ProjectPicker = ({ onSelectProject, onCreateProject }) => {
                 width: 36, height: 36, borderRadius: 8, background: '#0d1117',
                 border: '1px solid #30363d', display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="#58a6ff">
-                  <path d="M1.75 1A1.75 1.75 0 000 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0016 13.25v-8.5A1.75 1.75 0 0014.25 3H7.5a.25.25 0 01-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75z" />
-                </svg>
+                <Folder size={16} color="#58a6ff" />
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 500, color: '#e6edf3' }}>{p.name}</div>
@@ -148,9 +145,7 @@ const ProjectPicker = ({ onSelectProject, onCreateProject }) => {
                   {p.modifiedTime ? new Date(p.modifiedTime).toLocaleDateString() : 'Google Drive'}
                 </div>
               </div>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="#484f58">
-                <path fillRule="evenodd" d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z" />
-              </svg>
+              <ChevronRight size={16} color="#484f58" />
             </div>
           ))}
         </div>

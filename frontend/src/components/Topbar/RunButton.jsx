@@ -9,26 +9,7 @@ import React, { useEffect, useCallback } from 'react';
 import { useEditor } from '../../context/EditorContext';
 import { getLanguageFromFileName } from '../../utils/languageMap';
 
-/* ── SVG Icons ────────────────────────────────────────────────────────── */
-
-const PlayIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-    <path d="M8 0a8 8 0 100 16A8 8 0 008 0zM6.379 5.227A.25.25 0 006 5.442v5.117a.25.25 0 00.379.214l4.264-2.559a.25.25 0 000-.428L6.379 5.227z" />
-  </svg>
-);
-
-const StopIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-    <path d="M4.5 4.5h7v7h-7z" />
-    <path fillRule="evenodd" d="M8 16A8 8 0 108 0a8 8 0 000 16zm0-1.5a6.5 6.5 0 100-13 6.5 6.5 0 000 13z" />
-  </svg>
-);
-
-const SpinnerIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ animation: 'spin 1s linear infinite' }}>
-    <path d="M8 2.5a5.487 5.487 0 00-4.131 1.869l1.204 1.204A.25.25 0 014.896 6H1.25A.25.25 0 011 5.75V2.104a.25.25 0 01.427-.177l1.38 1.38A7.001 7.001 0 0115 8a.75.75 0 01-1.5 0A5.5 5.5 0 008 2.5z" />
-  </svg>
-);
+import { Play, Square, Loader2 } from 'lucide-react';
 
 const RunButton = ({ onRun, onStop, isRunning }) => {
   const { activeFile } = useEditor();
@@ -105,7 +86,7 @@ const RunButton = ({ onRun, onStop, isRunning }) => {
         }
       }}
     >
-      {isRunning ? <SpinnerIcon /> : <PlayIcon />}
+      {isRunning ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
       {isRunning ? 'Stop' : 'Run'}
       {!isRunning && langInfo?.displayName && (
         <span style={{
