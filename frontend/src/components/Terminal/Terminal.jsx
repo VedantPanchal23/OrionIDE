@@ -21,9 +21,7 @@ const LINE_COLORS = {
 const Terminal = ({ lines, isRunning, onClear }) => {
   const outputRef = useRef(null);
   const containerRef = useRef(null);
-  const [height, setHeight] = useState(220);
   const [copied, setCopied] = useState(false);
-  const isDraggingRef = useRef(false);
 
   // Auto-scroll to bottom on new output
   useEffect(() => {
@@ -41,53 +39,19 @@ const Terminal = ({ lines, isRunning, onClear }) => {
     }).catch(() => {});
   }, [lines]);
 
-  // Resize drag handler
-  const handleMouseDown = useCallback((e) => {
-    e.preventDefault();
-    isDraggingRef.current = true;
-    const startY = e.clientY;
-    const startHeight = height;
-
-    const onMouseMove = (moveEvent) => {
-      if (!isDraggingRef.current) return;
-      const delta = startY - moveEvent.clientY;
-      setHeight(Math.max(100, Math.min(600, startHeight + delta)));
-    };
-
-    const onMouseUp = () => {
-      isDraggingRef.current = false;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  }, [height]);
-
   return (
     <div
       ref={containerRef}
       style={{
-        height,
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
         background: '#010409',
-        borderTop: '1px solid #21262d',
+        borderTop: 'none',
         flexShrink: 0,
       }}
     >
-      {/* Resize handle */}
-      <div
-        onMouseDown={handleMouseDown}
-        style={{
-          height: 4,
-          cursor: 'ns-resize',
-          background: 'transparent',
-          transition: 'background 0.15s',
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = '#58a6ff'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-      />
+
 
       {/* Header */}
       <div style={{

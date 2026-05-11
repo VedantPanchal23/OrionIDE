@@ -13,8 +13,10 @@ import Terminal from '../Terminal/Terminal';
 import RunButton from '../Topbar/RunButton';
 import FileTree from '../FileTree/FileTree';
 import AgentPanel from '../AgentPanel/AgentPanel';
+import CommandPalette from '../CommandPalette/CommandPalette';
 import useTerminal from '../../hooks/useTerminal';
 import useFileTree from '../../hooks/useFileTree';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
 import { Files, Search, GitBranch, PlayCircle, Bot, ArrowLeft } from 'lucide-react';
 
@@ -125,6 +127,7 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
       display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden',
       background: '#0d1117', color: '#c9d1d9', fontFamily: "'Inter', sans-serif",
     }}>
+      <CommandPalette tree={fileTree.tree} />
       {/* Activity bar */}
       <aside style={{
         width: 48, background: '#010409', borderRight: '1px solid #21262d',
@@ -152,47 +155,77 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
         </div>
       </aside>
 
-      {/* Sidebar */}
-      <div style={{
-        width: 260, background: '#010409', borderRight: '1px solid #21262d',
-        display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0,
-      }}>
-        <div style={{
-          padding: '12px 16px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
-          letterSpacing: '0.5px', color: '#7d8590', borderBottom: '1px solid #21262d',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <span>{activePanel === 'agent' ? 'AI Agent' : activePanel === 'files' ? projectName || 'Explorer' : PANELS.find(p => p.id === activePanel)?.title}</span>
-        </div>
-        <SidebarContent
-          panel={activePanel}
-          tree={fileTree.tree}
-          expandedFolders={fileTree.expandedFolders}
-          isLoading={fileTree.isLoading}
-          error={fileTree.error}
-          onToggleFolder={fileTree.expandFolder}
-          onCreateItem={fileTree.createItem}
-          onDeleteItem={fileTree.deleteItem}
-          onRenameItem={fileTree.renameItem}
-          onRefresh={fileTree.refreshTree}
-        />
-      </div>
+      {/* Resizable layout */}
+      <PanelGroup direction="horizontal" style={{ flex: 1 }}>
+        {/* Sidebar Panel */}
+        <Panel
+          defaultSize={20}
+          minSize={15}
+          maxSize={40}
+          style={{
+            background: '#010409', borderRight: '1px solid #21262d',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          }}
+        >
+          <div style={{
+            padding: '12px 16px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
+            letterSpacing: '0.5px', color: '#7d8590', borderBottom: '1px solid #21262d',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <span>{activePanel === 'agent' ? 'AI Agent' : activePanel === 'files' ? projectName || 'Explorer' : PANELS.find(p => p.id === activePanel)?.title}</span>
+          </div>
+          <SidebarContent
+            panel={activePanel}
+            tree={fileTree.tree}
+            expandedFolders={fileTree.expandedFolders}
+            isLoading={fileTree.isLoading}
+            error={fileTree.error}
+            onToggleFolder={fileTree.expandFolder}
+            onCreateItem={fileTree.createItem}
+            onDeleteItem={fileTree.deleteItem}
+            onRenameItem={fileTree.renameItem}
+            onRefresh={fileTree.refreshTree}
+          />
+        </Panel>
 
-      {/* Main area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Topbar */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '6px 16px', background: '#010409', borderBottom: '1px solid #21262d', flexShrink: 0,
-        }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#7d8590', letterSpacing: '-0.3px' }}>Orion IDE</div>
-          <RunButton onRun={runCode} onStop={stopExecution} isRunning={isRunning} />
-        </div>
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <EditorPane />
-        </div>
-        <Terminal lines={lines} isRunning={isRunning} onClear={clearTerminal} />
-      </div>
+        {/* Vertical Resize Handle */}
+        <PanelResizeHandle style={{ width: 4, background: 'transparent', cursor: 'col-resize', transition: 'background 0.2s' }} 
+          onMouseEnter={(e) => { e.currentTarget.style.background = '#58a6ff'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        />
+
+        {/* Main Editor/Terminal Area */}
+        <Panel style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Topbar */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '6px 16px', background: '#010409', borderBottom: '1px solid #21262d', flexShrink: 0,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#7d8590', letterSpacing: '-0.3px' }}>Orion IDE</div>
+            <RunButton onRun={runCode} onStop={stopExecution} isRunning={isRunning} />
+          </div>
+          
+          <PanelGroup direction="vertical">
+            {/* Editor Panel */}
+            <Panel defaultSize={70} minSize={30}>
+              <div style={{ height: '100%', overflow: 'hidden' }}>
+                <EditorPane />
+              </div>
+            </Panel>
+
+            {/* Horizontal Resize Handle */}
+            <PanelResizeHandle style={{ height: 4, background: 'transparent', cursor: 'row-resize', transition: 'background 0.2s', borderTop: '1px solid #21262d' }} 
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#58a6ff'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            />
+
+            {/* Terminal Panel */}
+            <Panel defaultSize={30} minSize={15}>
+              <Terminal lines={lines} isRunning={isRunning} onClear={clearTerminal} />
+            </Panel>
+          </PanelGroup>
+        </Panel>
+      </PanelGroup>
     </div>
   );
 };
