@@ -8,6 +8,7 @@ RUN npm ci
 
 COPY public/ ./public/
 COPY src/ ./src/
+COPY index.html vite.config.js eslint.config.js ./
 
 ENV GENERATE_SOURCEMAP=false
 RUN npm run build
@@ -22,7 +23,7 @@ RUN addgroup -S orion && adduser -S orion -G orion
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Copy built React app
-COPY --from=builder /app/build /usr/share/nginx/html
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Set ownership
 RUN chown -R orion:orion /usr/share/nginx/html && \
