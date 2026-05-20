@@ -8,6 +8,7 @@
 import React from 'react';
 import { useEditor } from '../../context/EditorContext';
 import EditorTabs from './EditorTabs';
+import Breadcrumbs from './Breadcrumbs';
 import Editor from './Editor';
 import StatusBar from './StatusBar';
 
@@ -97,9 +98,10 @@ const EditorPane = () => {
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      background: '#0d1117',
+      background: 'var(--bg-default)',
     }}>
       <EditorTabs />
+      <Breadcrumbs />
       <div style={{ flex: 1, overflow: 'hidden' }}>
         {activeFile && (
           <Editor

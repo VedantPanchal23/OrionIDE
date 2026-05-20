@@ -12,7 +12,7 @@ import { registerAllSnippets } from './snippets';
 const DEBOUNCE_MS = 500;
 
 const Editor = ({ fileId, fileName, language, initialContent }) => {
-  const { updateContent, saveFile } = useEditor();
+  const { updateContent, saveFile, setCursorPosition } = useEditor();
   const editorRef = useRef(null);
   const debounceTimerRef = useRef(null);
 
@@ -26,6 +26,11 @@ const Editor = ({ fileId, fileName, language, initialContent }) => {
     // Register Ctrl+S / Cmd+S
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
       saveFile(fileId);
+    });
+
+    // Track cursor position
+    editor.onDidChangeCursorPosition((e) => {
+      setCursorPosition({ line: e.position.lineNumber, column: e.position.column });
     });
   };
 

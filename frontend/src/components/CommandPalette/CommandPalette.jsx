@@ -34,7 +34,7 @@ const CommandPalette = ({ tree }) => {
     let result = [];
     nodes.forEach(node => {
       const fullPath = path ? `${path}/${node.name}` : node.name;
-      if (node.type === 'file') {
+      if (!node.isFolder) {
         result.push({ ...node, fullPath });
       } else if (node.children) {
         result = result.concat(flattenTree(node.children, fullPath));
@@ -66,7 +66,7 @@ const CommandPalette = ({ tree }) => {
     if (item.isCommand) {
       item.action();
     } else {
-      openFile(item);
+      openFile(item.id, item.name);
     }
     setIsOpen(false);
   };
@@ -130,7 +130,7 @@ const CommandPalette = ({ tree }) => {
               const isSelected = index === selectedIndex;
               return (
                 <div
-                  key={item.id || item.fileId}
+                  key={item.id}
                   onMouseEnter={() => setSelectedIndex(index)}
                   onClick={() => handleExecute(item)}
                   style={{

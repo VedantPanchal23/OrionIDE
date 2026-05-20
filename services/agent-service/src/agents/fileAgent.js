@@ -11,7 +11,7 @@ const { createLogger } = require('../../../../shared/utils/logger');
 
 const logger = createLogger('agent-service');
 
-const DRIVE_SERVICE_URL = process.env.DRIVE_SERVICE_URL || 'http://drive-service:3003';
+const DRIVE_SERVICE_URL = process.env.DRIVE_SERVICE_URL || 'http://drive-service:3002';
 
 class FileAgent extends BaseAgent {
   constructor() {

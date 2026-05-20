@@ -8,6 +8,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useEditor } from '../../context/EditorContext';
 import { getLanguageFromFileName } from '../../utils/languageMap';
+import NewFileDialog from './NewFileDialog';
 
 import {
   ChevronRight,
@@ -237,20 +238,31 @@ const LoadingSkeleton = ({ depth }) => (
 
 const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onCreateItem, onDeleteItem, onRenameItem, onRefresh }) => {
   const { openFile } = useEditor();
+  const [newFileDialog, setNewFileDialog] = useState({ open: false, parentId: null, type: 'file' });
 
   const handleClickFile = useCallback((fileId, fileName) => {
     openFile(fileId, fileName);
   }, [openFile]);
 
   const handleCreateItem = useCallback((parentId, type) => {
-    const name = window.prompt(`Enter ${type} name:`);
-    if (name?.trim()) {
-      onCreateItem(parentId, name.trim(), type);
+    if (type === 'folder') {
+      const name = window.prompt('Enter folder name:');
+      if (name?.trim()) {
+        onCreateItem(parentId, name.trim(), type);
+      }
+    } else {
+      setNewFileDialog({ open: true, parentId, type: 'file' });
     }
   }, [onCreateItem]);
 
+  const handleCreateFromDialog = useCallback((fileName, lang) => {
+    if (newFileDialog.parentId && fileName) {
+      onCreateItem(newFileDialog.parentId, fileName, 'file');
+    }
+  }, [newFileDialog.parentId, onCreateItem]);
+
   const handleDelete = useCallback((itemId, itemName) => {
-    if (window.confirm(`Delete "${itemName}"? This cannot be undone.`)) {
+    if (window.confirm(`Delete "${itemName}"? This action moves the file to trash.`)) {
       onDeleteItem(itemId);
     }
   }, [onDeleteItem]);
@@ -338,6 +350,13 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
           Empty folder
         </div>
       )}
+
+      {/* New File Dialog */}
+      <NewFileDialog
+        isOpen={newFileDialog.open}
+        onClose={() => setNewFileDialog({ open: false, parentId: null, type: 'file' })}
+        onCreate={handleCreateFromDialog}
+      />
     </div>
   );
 };

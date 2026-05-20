@@ -8,7 +8,7 @@ import React from 'react';
 import { useEditor } from '../../context/EditorContext';
 import { getLanguageFromFileName } from '../../utils/languageMap';
 
-import { GitBranch, Check, Loader2, AlertTriangle } from 'lucide-react';
+import { Check, Loader2, AlertTriangle } from 'lucide-react';
 
 const DotIcon = ({ color }) => (
   <svg width="8" height="8" viewBox="0 0 8 8">
@@ -17,7 +17,7 @@ const DotIcon = ({ color }) => (
 );
 
 const StatusBar = () => {
-  const { activeFile, saveStatus } = useEditor();
+  const { activeFile, saveStatus, cursorPosition } = useEditor();
 
   if (!activeFile) return null;
 
@@ -25,24 +25,24 @@ const StatusBar = () => {
 
   const saveIndicators = {
     idle: {
-      icon: activeFile.isDirty ? <DotIcon color="#e3b341" /> : null,
+      icon: activeFile.isDirty ? <DotIcon color="var(--accent-yellow)" /> : null,
       text: activeFile.isDirty ? 'Unsaved' : '',
-      color: activeFile.isDirty ? '#e3b341' : '#7d8590',
+      color: activeFile.isDirty ? 'var(--accent-yellow)' : 'var(--text-muted)',
     },
     saving: {
       icon: <Loader2 size={12} className="spin" />,
       text: 'Saving...',
-      color: '#58a6ff',
+      color: 'var(--info)',
     },
     saved: {
       icon: <Check size={12} />,
       text: 'Saved',
-      color: '#3fb950',
+      color: 'var(--success)',
     },
     error: {
       icon: <AlertTriangle size={12} />,
       text: 'Save failed',
-      color: '#f85149',
+      color: 'var(--error)',
     },
   };
 
@@ -55,22 +55,16 @@ const StatusBar = () => {
       justifyContent: 'space-between',
       padding: '0 12px',
       height: 24,
-      background: '#010409',
-      borderTop: '1px solid #21262d',
-      fontSize: 12,
-      fontFamily: "'Inter', sans-serif",
-      color: '#7d8590',
+      background: 'var(--bg-canvas)',
+      borderTop: '1px solid var(--border-default)',
+      fontSize: 'var(--font-size-sm)',
+      fontFamily: 'var(--font-ui)',
+      color: 'var(--text-muted)',
       flexShrink: 0,
       userSelect: 'none',
     }}>
       {/* Left side */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        {/* Branch indicator */}
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <GitBranch size={12} />
-          main
-        </span>
-
         {/* Save status */}
         {save.text && (
           <span style={{
@@ -78,7 +72,7 @@ const StatusBar = () => {
             alignItems: 'center',
             gap: 4,
             color: save.color,
-            transition: 'color 0.2s',
+            transition: 'color var(--transition-normal)',
           }}>
             {save.icon}
             {save.text}
@@ -88,6 +82,10 @@ const StatusBar = () => {
 
       {/* Right side */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        {/* Cursor position */}
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)' }}>
+          Ln {cursorPosition?.line || 1}, Col {cursorPosition?.column || 1}
+        </span>
         <span>Spaces: 2</span>
         <span>UTF-8</span>
         <span style={{
@@ -95,13 +93,13 @@ const StatusBar = () => {
           alignItems: 'center',
           gap: 4,
           padding: '1px 8px',
-          background: '#161b22',
+          background: 'var(--bg-subtle)',
           borderRadius: 4,
         }}>
           <span style={{
             fontSize: 9,
             fontWeight: 700,
-            fontFamily: "'JetBrains Mono', monospace",
+            fontFamily: 'var(--font-mono)',
             color: langInfo.color,
           }}>
             {langInfo.icon}

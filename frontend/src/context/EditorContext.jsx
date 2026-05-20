@@ -24,6 +24,7 @@ export const EditorProvider = ({ children }) => {
   const [openFiles, setOpenFiles] = useState([]);
   const [activeFileId, setActiveFileId] = useState(null);
   const [saveStatus, setSaveStatus] = useState('idle'); // idle | saving | saved | error
+  const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const saveTimeoutRef = useRef(null);
 
   // ── Restore session on mount ────────────────────────────────────────
@@ -151,6 +152,8 @@ export const EditorProvider = ({ children }) => {
       activeFileId,
       activeFile,
       saveStatus,
+      cursorPosition,
+      setCursorPosition,
       openFile,
       closeFile,
       updateContent,

@@ -11,7 +11,8 @@ const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const { createLogger } = require('../../../shared/utils/logger');
 const notificationRoutes = require('./routes/notifications');
-const { startHeartbeat, stopHeartbeat } = require('./services/sseService');
+const { startHeartbeat, stopHeartbeat, sendToUser } = require('./services/sseService');
+const pubsubService = require('./services/pubsubService');
 
 const logger = createLogger('notification-service');
 const app = express();
@@ -47,6 +48,13 @@ if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     logger.info('Notification Service started', { port: PORT, env: process.env.NODE_ENV || 'development' });
     startHeartbeat();
+
+    // Subscribe to Redis Pub/Sub and forward messages to SSE connections
+    pubsubService.subscribe('notif:broadcast', (message) => {
+      if (message.userId) {
+        sendToUser(message.userId, message);
+      }
+    });
   });
 
   process.on('SIGTERM', () => { stopHeartbeat(); process.exit(0); });
