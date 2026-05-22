@@ -46,6 +46,7 @@ const SERVICE_URLS = {
   execution:     process.env.EXECUTION_SERVICE_URL || 'http://localhost:3004',
   agents:        process.env.AGENT_SERVICE_URL || 'http://localhost:3005',
   notifications: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3006',
+  terminal:      process.env.TERMINAL_SERVICE_URL || 'http://localhost:3007',
 };
 
 // ──────────────────────────────────────────────────────────────────────────

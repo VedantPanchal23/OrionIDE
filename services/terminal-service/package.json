@@ -1,0 +1,26 @@
+{
+  "name": "orion-terminal-service",
+  "version": "1.0.0",
+  "description": "Orion IDE — Terminal Service: interactive PTY shells via WebSocket",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "jest --coverage"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "express": "^4.21.0",
+    "helmet": "^8.0.0",
+    "node-pty": "^1.0.0",
+    "uuid": "^10.0.0",
+    "winston": "^3.14.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "keywords": ["orion", "terminal", "pty", "websocket"],
+  "license": "MIT"
+}

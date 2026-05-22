@@ -193,6 +193,28 @@ services:
     networks:
       - orion-network
 
+  # ── Terminal Service ──────────────────────────────────────────────────
+  terminal-service:
+    build:
+      context: ./services/terminal-service
+      dockerfile: Dockerfile
+    container_name: orion-terminal-service-dev
+    restart: unless-stopped
+    ports:
+      - "3007:3007"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - PORT=3007
+    volumes:
+      - ./services/terminal-service/src:/app/src
+      - ./shared:/shared
+      - terminal-workspaces:/workspace
+    command: npx nodemon src/app.js
+    networks:
+      - orion-network
+
   # ── Piston (Code Execution Sandbox) ─────────────────────────────────────
   piston:
     image: ghcr.io/engineer-man/piston
@@ -224,3 +246,5 @@ volumes:
     name: orion-redis-data
   piston-packages:
     name: orion-piston-packages
+  terminal-workspaces:
+    name: orion-terminal-workspaces

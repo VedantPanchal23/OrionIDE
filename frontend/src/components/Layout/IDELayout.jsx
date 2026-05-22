@@ -9,14 +9,14 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useEditor } from '../../context/EditorContext';
 import EditorPane from '../Editor/EditorPane';
-import Terminal from '../Terminal/Terminal';
+import TerminalPanel from '../Terminal/TerminalPanel';
 import RunButton from '../Topbar/RunButton';
 import FileTree from '../FileTree/FileTree';
 import AgentPanel from '../AgentPanel/AgentPanel';
 import CommandPalette from '../CommandPalette/CommandPalette';
 import useTerminal from '../../hooks/useTerminal';
 import useFileTree from '../../hooks/useFileTree';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 
 import { Files, Search, GitBranch, PlayCircle, Bot, ArrowLeft } from 'lucide-react';
 
@@ -125,12 +125,12 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
   return (
     <div style={{
       display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden',
-      background: '#0d1117', color: '#c9d1d9', fontFamily: "'Inter', sans-serif",
+      background: 'var(--bg-default)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)',
     }}>
       <CommandPalette tree={fileTree.tree} />
       {/* Activity bar */}
       <aside style={{
-        width: 48, background: '#010409', borderRight: '1px solid #21262d',
+        width: 48, background: 'var(--bg-canvas)', borderRight: '1px solid var(--border-default)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 8, gap: 4, flexShrink: 0,
       }}>
         {PANELS.map((p) => {
@@ -138,14 +138,14 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
           return (
             <button key={p.id} title={p.title} onClick={() => setActivePanel(p.id)} style={{
               width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: isActive ? '#161b22' : 'transparent', border: 'none', borderRadius: 8,
-              cursor: 'pointer', transition: 'background 0.15s', padding: 0,
-              borderLeft: isActive ? '2px solid #58a6ff' : '2px solid transparent',
+              background: isActive ? 'var(--bg-subtle)' : 'transparent', border: 'none', borderRadius: 8,
+              cursor: 'pointer', transition: 'background var(--transition-normal)', padding: 0,
+              borderLeft: isActive ? '2px solid var(--accent-blue)' : '2px solid transparent',
             }}
-            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = '#161b22'; }}
+            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--bg-subtle)'; }}
             onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
             >
-              {p.icon ? <p.icon size={20} color={isActive ? '#c9d1d9' : '#7d8590'} /> : <Bot size={20} color={isActive ? '#c9d1d9' : '#7d8590'} />}
+              {p.icon ? <p.icon size={20} color={isActive ? 'var(--text-primary)' : 'var(--text-muted)'} /> : <Bot size={20} color={isActive ? 'var(--text-primary)' : 'var(--text-muted)'} />}
             </button>
           );
         })}
@@ -163,13 +163,13 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
           minSize={15}
           maxSize={40}
           style={{
-            background: '#010409', borderRight: '1px solid #21262d',
+            background: 'var(--bg-canvas)', borderRight: '1px solid var(--border-default)',
             display: 'flex', flexDirection: 'column', overflow: 'hidden',
           }}
         >
           <div style={{
             padding: '12px 16px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
-            letterSpacing: '0.5px', color: '#7d8590', borderBottom: '1px solid #21262d',
+            letterSpacing: '0.5px', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-default)',
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
             <span>{activePanel === 'agent' ? 'AI Agent' : activePanel === 'files' ? projectName || 'Explorer' : PANELS.find(p => p.id === activePanel)?.title}</span>
@@ -199,9 +199,9 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
           {/* Topbar */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '6px 16px', background: '#010409', borderBottom: '1px solid #21262d', flexShrink: 0,
+            padding: '6px 16px', background: 'var(--bg-canvas)', borderBottom: '1px solid var(--border-default)', flexShrink: 0,
           }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#7d8590', letterSpacing: '-0.3px' }}>Orion IDE</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '-0.3px' }}>Orion IDE</div>
             <RunButton onRun={runCode} onStop={stopExecution} isRunning={isRunning} />
           </div>
           
@@ -221,7 +221,7 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
 
             {/* Terminal Panel */}
             <Panel defaultSize={30} minSize={15}>
-              <Terminal lines={lines} isRunning={isRunning} onClear={clearTerminal} />
+              <TerminalPanel lines={lines} isRunning={isRunning} onClear={clearTerminal} />
             </Panel>
           </PanelGroup>
         </Panel>

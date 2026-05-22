@@ -11,6 +11,7 @@ const { mountEditorRoutes } = require('./editor');
 const { mountExecuteRoutes } = require('./execute');
 const { mountAgentRoutes } = require('./agents');
 const { mountNotificationRoutes } = require('./notifications');
+const { mountTerminalRoutes } = require('./terminal');
 
 /**
  * Mount all downstream service routes on the app.
@@ -24,6 +25,7 @@ const mountAllRoutes = (app) => {
   mountExecuteRoutes(app);        // /api/execute/*        → execution-service:3004
   mountAgentRoutes(app);          // /api/agents/*         → agent-service:3005
   mountNotificationRoutes(app);   // /api/notifications/*  → notification-service:3006
+  mountTerminalRoutes(app);       // /api/terminal/*       → terminal-service:3007
 };
 
 module.exports = { mountAllRoutes };
