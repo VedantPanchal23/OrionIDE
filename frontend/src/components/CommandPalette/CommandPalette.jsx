@@ -1,15 +1,21 @@
+/**
+ * Orion IDE — Command Palette
+ *
+ * Quick access to files and commands via Ctrl+P.
+ * Uses design tokens for consistent styling.
+ */
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useEditor } from '../../context/EditorContext';
-import { Search, File, PlayCircle, Settings, X, Terminal } from 'lucide-react';
-import useTerminal from '../../hooks/useTerminal';
+import { Search, File, PlayCircle, Settings, X, Terminal, Command } from 'lucide-react';
 
 const CommandPalette = ({ tree }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
+  const listRef = useRef(null);
   const { openFile } = useEditor();
-  const { runCode } = useTerminal();
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -46,13 +52,13 @@ const CommandPalette = ({ tree }) => {
   const files = tree ? flattenTree(tree) : [];
   
   const commands = [
-    { id: 'cmd-run', name: 'Run Active File', icon: <PlayCircle size={16} />, action: () => { /* Add global run trigger */ } },
-    { id: 'cmd-settings', name: 'Open Settings', icon: <Settings size={16} />, action: () => {} },
-    { id: 'cmd-terminal', name: 'Toggle Terminal', icon: <Terminal size={16} />, action: () => {} },
+    { id: 'cmd-run', name: 'Run Active File', icon: <PlayCircle size={15} />, action: () => {} },
+    { id: 'cmd-settings', name: 'Open Settings', icon: <Settings size={15} />, action: () => {} },
+    { id: 'cmd-terminal', name: 'New Terminal', icon: <Terminal size={15} />, action: () => {} },
   ];
 
   const items = [
-    ...files.map(f => ({ ...f, isCommand: false, icon: <File size={16} /> })),
+    ...files.map(f => ({ ...f, isCommand: false, icon: <File size={15} /> })),
     ...commands.map(c => ({ ...c, isCommand: true }))
   ].filter(item => 
     (item.fullPath || item.name).toLowerCase().includes(query.toLowerCase())
@@ -61,6 +67,16 @@ const CommandPalette = ({ tree }) => {
   useEffect(() => {
     setSelectedIndex(0);
   }, [query]);
+
+  // Scroll selected item into view
+  useEffect(() => {
+    if (listRef.current) {
+      const selected = listRef.current.children[selectedIndex];
+      if (selected) {
+        selected.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }, [selectedIndex]);
 
   const handleExecute = (item) => {
     if (item.isCommand) {
@@ -92,38 +108,45 @@ const CommandPalette = ({ tree }) => {
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,
       display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '15vh',
-      background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)'
+      background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)',
     }} onClick={() => setIsOpen(false)}>
       <div 
         style={{
-          width: 600, background: '#161b22', borderRadius: 12,
-          border: '1px solid #30363d', boxShadow: '0 24px 48px rgba(0,0,0,0.5)',
-          display: 'flex', flexDirection: 'column', overflow: 'hidden'
+          width: 560, background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)',
+          border: '1px solid var(--border-default)', boxShadow: 'var(--shadow-xl)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
         }}
         onClick={e => e.stopPropagation()}
       >
-        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #21262d' }}>
-          <Search size={18} color="#7d8590" />
+        {/* Search input */}
+        <div style={{
+          display: 'flex', alignItems: 'center', padding: '12px 16px',
+          borderBottom: '1px solid var(--border-default)',
+        }}>
+          <Search size={16} color="var(--text-muted)" style={{ flexShrink: 0 }} />
           <input
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Search files or commands..."
+            placeholder="Search files or type > for commands..."
             style={{
-              flex: 1, background: 'transparent', border: 'none', color: '#e6edf3',
-              fontSize: 15, outline: 'none', padding: '0 12px', fontFamily: "'Inter', sans-serif"
+              flex: 1, background: 'transparent', border: 'none', color: 'var(--text-primary)',
+              fontSize: 'var(--font-size-base)', outline: 'none', padding: '0 12px',
+              fontFamily: 'var(--font-ui)',
             }}
           />
-          <button onClick={() => setIsOpen(false)} style={{ background: 'none', border: 'none', color: '#7d8590', cursor: 'pointer' }}>
-            <X size={16} />
-          </button>
+          <kbd style={{ fontSize: 10, padding: '1px 5px', minWidth: 'auto', height: 18 }}>Esc</kbd>
         </div>
 
-        <div style={{ maxHeight: 340, overflowY: 'auto', padding: '8px 0' }}>
+        {/* Results list */}
+        <div ref={listRef} style={{ maxHeight: 360, overflowY: 'auto', padding: '4px 0' }}>
           {items.length === 0 ? (
-            <div style={{ padding: '24px', textAlign: 'center', color: '#7d8590', fontSize: 13 }}>
-              No matching files or commands found.
+            <div style={{
+              padding: 32, textAlign: 'center', color: 'var(--text-muted)',
+              fontSize: 'var(--font-size-md)',
+            }}>
+              No matching files or commands
             </div>
           ) : (
             items.map((item, index) => {
@@ -134,30 +157,73 @@ const CommandPalette = ({ tree }) => {
                   onMouseEnter={() => setSelectedIndex(index)}
                   onClick={() => handleExecute(item)}
                   style={{
-                    padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 12,
-                    background: isSelected ? '#238636' : 'transparent',
-                    color: isSelected ? '#fff' : '#c9d1d9',
-                    cursor: 'pointer', transition: 'background 0.1s'
+                    padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 10,
+                    margin: '0 4px', borderRadius: 'var(--radius-sm)',
+                    background: isSelected ? 'var(--accent-blue)' : 'transparent',
+                    color: isSelected ? '#fff' : 'var(--text-primary)',
+                    cursor: 'pointer', transition: 'background var(--transition-fast)',
                   }}
                 >
-                  <div style={{ opacity: isSelected ? 1 : 0.7 }}>{item.icon}</div>
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: 13, fontWeight: 500 }}>{item.name}</span>
+                  <div style={{
+                    opacity: isSelected ? 1 : 0.6,
+                    color: isSelected ? '#fff' : 'var(--text-muted)',
+                    display: 'flex', flexShrink: 0,
+                  }}>
+                    {item.icon}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                    <span style={{
+                      fontSize: 'var(--font-size-md)', fontWeight: 500,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {item.name}
+                    </span>
                     {item.fullPath && !item.isCommand && (
-                      <span style={{ fontSize: 11, color: isSelected ? '#e6edf3' : '#7d8590', marginTop: 2, opacity: 0.8 }}>
+                      <span style={{
+                        fontSize: 'var(--font-size-xs)',
+                        color: isSelected ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)',
+                        marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}>
                         {item.fullPath}
                       </span>
                     )}
                   </div>
                   {item.isCommand && (
-                    <span style={{ fontSize: 10, background: 'rgba(0,0,0,0.2)', padding: '2px 6px', borderRadius: 4 }}>
-                      Command
+                    <span style={{
+                      fontSize: 'var(--font-size-xs)', fontWeight: 600,
+                      background: isSelected ? 'rgba(255,255,255,0.15)' : 'var(--bg-emphasis)',
+                      color: isSelected ? 'rgba(255,255,255,0.9)' : 'var(--text-muted)',
+                      padding: '2px 8px', borderRadius: 'var(--radius-sm)',
+                      display: 'flex', alignItems: 'center', gap: 4,
+                    }}>
+                      <Command size={10} />
+                      cmd
                     </span>
                   )}
                 </div>
               );
             })
           )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          padding: '8px 16px', borderTop: '1px solid var(--border-default)',
+          display: 'flex', alignItems: 'center', gap: 16,
+          fontSize: 'var(--font-size-xs)', color: 'var(--text-disabled)',
+        }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <kbd style={{ fontSize: 10, padding: '0 4px', minWidth: 'auto', height: 16 }}>↑↓</kbd>
+            Navigate
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <kbd style={{ fontSize: 10, padding: '0 4px', minWidth: 'auto', height: 16 }}>↵</kbd>
+            Open
+          </span>
+          <span style={{ marginLeft: 'auto' }}>
+            {items.length} result{items.length !== 1 ? 's' : ''}
+          </span>
         </div>
       </div>
     </div>
