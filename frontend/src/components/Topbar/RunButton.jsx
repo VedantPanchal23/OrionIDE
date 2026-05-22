@@ -3,6 +3,7 @@
  *
  * Triggers code execution for the active file.
  * Disabled when running. Keyboard: F5 or Ctrl+Enter.
+ * Uses design tokens for consistent styling.
  */
 
 import React, { useEffect, useCallback } from 'react';
@@ -41,7 +42,6 @@ const RunButton = ({ onRun, onStop, isRunning }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleClick]);
 
-  // Tooltip for non-executable files
   const getTooltip = () => {
     if (!activeFile) return 'Open a file to run it';
     if (!isExecutable) return `${langInfo?.displayName || 'This file type'} cannot be executed`;
@@ -59,46 +59,42 @@ const RunButton = ({ onRun, onStop, isRunning }) => {
         alignItems: 'center',
         gap: 6,
         padding: '5px 14px',
-        background: isRunning ? '#da3633' : canRun ? '#238636' : '#21262d',
-        color: isRunning ? '#ffffff' : canRun ? '#ffffff' : '#484f58',
-        border: '1px solid',
-        borderColor: isRunning ? '#f85149' : canRun ? '#2ea043' : '#30363d',
-        borderRadius: 6,
+        background: isRunning
+          ? 'var(--accent-red)'
+          : canRun
+            ? 'var(--accent-green)'
+            : 'var(--bg-emphasis)',
+        color: isRunning || canRun ? '#ffffff' : 'var(--text-disabled)',
+        border: 'none',
+        borderRadius: 'var(--radius-sm)',
         cursor: !activeFile && !isRunning ? 'not-allowed' : 'pointer',
-        fontSize: 13,
-        fontFamily: "'Inter', sans-serif",
-        fontWeight: 500,
-        transition: 'all 0.15s ease',
+        fontSize: 'var(--font-size-md)',
+        fontFamily: 'var(--font-ui)',
+        fontWeight: 600,
+        transition: 'all var(--transition-normal)',
         opacity: !activeFile && !isRunning ? 0.5 : 1,
       }}
       onMouseEnter={(e) => {
-        if (isRunning) {
-          e.currentTarget.style.background = '#b91c1c';
-        } else if (canRun) {
-          e.currentTarget.style.background = '#2ea043';
-        }
+        if (isRunning) e.currentTarget.style.background = '#b91c1c';
+        else if (canRun) e.currentTarget.style.background = 'var(--accent-green-emphasis)';
       }}
       onMouseLeave={(e) => {
-        if (isRunning) {
-          e.currentTarget.style.background = '#da3633';
-        } else if (canRun) {
-          e.currentTarget.style.background = '#238636';
-        }
+        if (isRunning) e.currentTarget.style.background = 'var(--accent-red)';
+        else if (canRun) e.currentTarget.style.background = 'var(--accent-green)';
       }}
     >
       {isRunning ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
       {isRunning ? 'Stop' : 'Run'}
       {!isRunning && langInfo?.displayName && (
         <span style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          fontSize: 11,
-          opacity: 0.8,
-          fontWeight: 400,
+          display: 'flex', alignItems: 'center', gap: 4,
+          fontSize: 'var(--font-size-xs)', opacity: 0.85, fontWeight: 400,
         }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: langInfo.color || '#7d8590' }} />
-          ({langInfo.displayName})
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: langInfo.color || 'var(--text-muted)',
+          }} />
+          {langInfo.displayName}
         </span>
       )}
     </button>

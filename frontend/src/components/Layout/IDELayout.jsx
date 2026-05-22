@@ -44,29 +44,30 @@ function UserMenu({ onBackToProjects }) {
   return (
     <div style={{ position: 'relative' }}>
       <button onClick={() => setOpen(!open)} title={user.name || user.email} style={{
-        width: 28, height: 28, borderRadius: '50%', border: '2px solid #30363d',
-        cursor: 'pointer', overflow: 'hidden', padding: 0, background: '#21262d',
+        width: 28, height: 28, borderRadius: '50%', border: '2px solid var(--border-default)',
+        cursor: 'pointer', overflow: 'hidden', padding: 0, background: 'var(--bg-emphasis)',
       }}>
         {user.picture ? (
           <img src={user.picture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : (
-          <span style={{ color: '#c9d1d9', fontSize: 12, fontWeight: 600 }}>
+          <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>
             {(user.name || '?')[0].toUpperCase()}
           </span>
         )}
       </button>
       {open && (
         <div style={{
-          position: 'absolute', bottom: 40, left: 0, background: '#161b22', border: '1px solid #30363d',
-          borderRadius: 8, padding: 8, minWidth: 180, zIndex: 999, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          position: 'absolute', bottom: 40, left: 0, background: 'var(--bg-subtle)',
+          border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)',
+          padding: 8, minWidth: 180, zIndex: 999, boxShadow: 'var(--shadow-md)',
         }}>
-          <div style={{ padding: '8px 12px', fontSize: 13, color: '#e6edf3', fontWeight: 600 }}>{user.name}</div>
-          <div style={{ padding: '4px 12px 8px', fontSize: 12, color: '#7d8590' }}>{user.email}</div>
-          <div style={{ borderTop: '1px solid #21262d', margin: '4px 0' }} />
+          <div style={{ padding: '8px 12px', fontSize: 'var(--font-size-md)', color: 'var(--text-primary)', fontWeight: 600 }}>{user.name}</div>
+          <div style={{ padding: '4px 12px 8px', fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>{user.email}</div>
+          <div style={{ borderTop: '1px solid var(--bg-emphasis)', margin: '4px 0' }} />
           <button onClick={() => { onBackToProjects(); setOpen(false); }} style={menuBtnStyle}>
             <ArrowLeft size={14} /> Switch Project
           </button>
-          <button onClick={() => { logout(); setOpen(false); }} style={{ ...menuBtnStyle, color: '#f85149' }}>
+          <button onClick={() => { logout(); setOpen(false); }} style={{ ...menuBtnStyle, color: 'var(--accent-red-emphasis)' }}>
             Sign out
           </button>
         </div>
@@ -76,9 +77,11 @@ function UserMenu({ onBackToProjects }) {
 }
 
 const menuBtnStyle = {
-  width: '100%', padding: '8px 12px', fontSize: 13, color: '#c9d1d9', background: 'transparent',
-  border: 'none', cursor: 'pointer', textAlign: 'left', borderRadius: 4, display: 'flex',
-  alignItems: 'center', gap: 8, fontFamily: "'Inter', sans-serif",
+  width: '100%', padding: '8px 12px', fontSize: 'var(--font-size-md)',
+  color: 'var(--text-primary)', background: 'transparent',
+  border: 'none', cursor: 'pointer', textAlign: 'left',
+  borderRadius: 4, display: 'flex', alignItems: 'center', gap: 8,
+  fontFamily: 'var(--font-ui)',
 };
 
 /* ── Sidebar Panel Content ────────────────────────────────────────────── */
@@ -105,7 +108,7 @@ function SidebarContent({ panel, tree, expandedFolders, isLoading, error, onTogg
   const labels = { search: 'Search across files', git: 'Source control', run: 'Run & Debug' };
   return (
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, textAlign: 'center' }}>
-      <div style={{ fontSize: 13, color: '#484f58' }}>{labels[panel] || 'Coming soon'}</div>
+      <div style={{ fontSize: 'var(--font-size-md)', color: 'var(--text-disabled)' }}>{labels[panel] || 'Coming soon'}</div>
     </div>
   );
 }

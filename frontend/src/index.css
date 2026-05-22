@@ -196,3 +196,34 @@ kbd {
 [data-panel-resize-handle-id][data-resize-handle-active] {
   background: var(--accent-blue) !important;
 }
+
+/* ── Keyboard Key Styling ──────────────────────────────────────── */
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  font-family: var(--font-ui);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-emphasis);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  box-shadow: 0 1px 0 var(--border-default);
+  line-height: 1;
+}
+
+/* ── Search Match Highlight ────────────────────────────────────── */
+.search-match {
+  background: rgba(227, 179, 65, 0.3);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* ── File tree item hover ──────────────────────────────────────── */
+.tree-node:hover > .tree-actions {
+  opacity: 1 !important;
+}

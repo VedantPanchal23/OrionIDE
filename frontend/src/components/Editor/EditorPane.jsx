@@ -14,23 +14,6 @@ import StatusBar from './StatusBar';
 
 import { Code2 } from 'lucide-react';
 
-const KbdKey = ({ children }) => (
-  <kbd style={{
-    display: 'inline-block',
-    padding: '2px 8px',
-    fontSize: 12,
-    fontFamily: "'JetBrains Mono', monospace",
-    color: '#7d8590',
-    background: '#161b22',
-    border: '1px solid #30363d',
-    borderRadius: 4,
-    boxShadow: '0 1px 0 #21262d',
-    lineHeight: '18px',
-  }}>
-    {children}
-  </kbd>
-);
-
 const EditorPane = () => {
   const { openFiles, activeFile } = useEditor();
 
@@ -42,51 +25,51 @@ const EditorPane = () => {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#0d1117',
-        color: '#484f58',
-        fontFamily: "'Inter', sans-serif",
+        background: 'var(--bg-default)',
+        color: 'var(--text-disabled)',
+        fontFamily: 'var(--font-ui)',
         userSelect: 'none',
       }}>
-        <div style={{ marginBottom: 24, opacity: 0.4 }}>
-          <Code2 size={56} color="#30363d" strokeWidth={1} />
+        <div style={{ marginBottom: 24, opacity: 0.3 }}>
+          <Code2 size={56} color="var(--border-default)" strokeWidth={1} />
         </div>
         <h2 style={{
-          fontSize: 20,
+          fontSize: 'var(--font-size-xl)',
           fontWeight: 500,
-          color: '#7d8590',
+          color: 'var(--text-muted)',
           marginBottom: 8,
         }}>
           No files open
         </h2>
-        <p style={{ fontSize: 14, color: '#484f58', marginBottom: 32 }}>
+        <p style={{ fontSize: 'var(--font-size-base)', color: 'var(--text-disabled)', marginBottom: 32 }}>
           Open a file from the sidebar to start editing
         </p>
         <div style={{
           display: 'flex',
           flexDirection: 'column',
           gap: 10,
-          fontSize: 13,
-          color: '#484f58',
+          fontSize: 'var(--font-size-md)',
+          color: 'var(--text-disabled)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <KbdKey>Ctrl</KbdKey>
+            <kbd>Ctrl</kbd>
             <span>+</span>
-            <KbdKey>S</KbdKey>
-            <span style={{ marginLeft: 8, color: '#7d8590' }}>Save file</span>
+            <kbd>S</kbd>
+            <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>Save file</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <KbdKey>Ctrl</KbdKey>
+            <kbd>Ctrl</kbd>
             <span>+</span>
-            <KbdKey>P</KbdKey>
-            <span style={{ marginLeft: 8, color: '#7d8590' }}>Quick open</span>
+            <kbd>P</kbd>
+            <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>Quick open</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <KbdKey>Ctrl</KbdKey>
+            <kbd>Ctrl</kbd>
             <span>+</span>
-            <KbdKey>Shift</KbdKey>
+            <kbd>Shift</kbd>
             <span>+</span>
-            <KbdKey>P</KbdKey>
-            <span style={{ marginLeft: 8, color: '#7d8590' }}>Command palette</span>
+            <kbd>P</kbd>
+            <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>Command palette</span>
           </div>
         </div>
       </div>
