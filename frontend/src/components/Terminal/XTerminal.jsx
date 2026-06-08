@@ -210,7 +210,7 @@ const XTerminal = ({ terminalId, wsUrl, isActive, onExit }) => {
         width: '100%',
         height: '100%',
         padding: '4px 0 0 8px',
-        background: '#010409',
+        background: 'var(--bg-canvas)',
       }}
     />
   );

@@ -25,7 +25,16 @@ export const EditorProvider = ({ children }) => {
   const [activeFileId, setActiveFileId] = useState(null);
   const [saveStatus, setSaveStatus] = useState('idle'); // idle | saving | saved | error
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
+
+  // Refs for latest state access (avoids stale closure issues)
+  const openFilesRef = useRef(openFiles);
+  const activeFileIdRef = useRef(activeFileId);
   const saveTimeoutRef = useRef(null);
+  const writeBufferTimers = useRef(new Map()); // fileId → timer for debounced writes
+
+  // Keep refs in sync
+  useEffect(() => { openFilesRef.current = openFiles; }, [openFiles]);
+  useEffect(() => { activeFileIdRef.current = activeFileId; }, [activeFileId]);
 
   // ── Restore session on mount ────────────────────────────────────────
   useEffect(() => {
@@ -53,9 +62,24 @@ export const EditorProvider = ({ children }) => {
   // ── Open a file ────────────────────────────────────────────────────
   const openFile = useCallback(async (fileId, fileName) => {
     // Check if already open
-    const existing = openFiles.find((f) => f.fileId === fileId);
+    const existing = openFilesRef.current.find((f) => f.fileId === fileId);
     if (existing) {
       setActiveFileId(fileId);
+      // If content was never loaded (restored session), load it now
+      if (existing.content === null) {
+        try {
+          const res = await driveService.readFile(fileId);
+          const content = res.data?.data?.content ?? '';
+          setOpenFiles((prev) =>
+            prev.map((f) => f.fileId === fileId ? { ...f, content } : f)
+          );
+        } catch {
+          // Leave content as empty on error
+          setOpenFiles((prev) =>
+            prev.map((f) => f.fileId === fileId && f.content === null ? { ...f, content: '' } : f)
+          );
+        }
+      }
       editorService.setActiveFile(fileId).catch(() => {});
       return;
     }
@@ -66,7 +90,7 @@ export const EditorProvider = ({ children }) => {
     let content = '';
     try {
       const res = await driveService.readFile(fileId);
-      content = res.data?.data?.content || '';
+      content = res.data?.data?.content ?? '';
     } catch {
       content = '';
     }
@@ -84,14 +108,21 @@ export const EditorProvider = ({ children }) => {
 
     // Sync with backend session
     editorService.openFile(fileId, fileName, langInfo.monacoLanguage).catch(() => {});
-  }, [openFiles]);
+  }, []);
 
   // ── Close a file ────────────────────────────────────────────────────
   const closeFile = useCallback((fileId) => {
+    // Cancel any pending write buffer for this file
+    const timer = writeBufferTimers.current.get(fileId);
+    if (timer) {
+      clearTimeout(timer);
+      writeBufferTimers.current.delete(fileId);
+    }
+
     setOpenFiles((prev) => {
       const filtered = prev.filter((f) => f.fileId !== fileId);
-      // If closing active file, switch to last open
-      if (activeFileId === fileId) {
+      // Use ref for current activeFileId to avoid stale closure
+      if (activeFileIdRef.current === fileId) {
         const newActive = filtered.length > 0 ? filtered[filtered.length - 1].fileId : null;
         setActiveFileId(newActive);
       }
@@ -99,25 +130,43 @@ export const EditorProvider = ({ children }) => {
     });
 
     editorService.closeFile(fileId).catch(() => {});
-  }, [activeFileId]);
+  }, []); // No dependencies — uses refs
 
-  // ── Update content (from editor onChange) ────────────────────────────
+  // ── Update content (from editor onChange — already debounced by Editor.jsx) ──
   const updateContent = useCallback((fileId, newContent) => {
+    // Update state immediately (for UI responsiveness)
     setOpenFiles((prev) =>
       prev.map((f) =>
         f.fileId === fileId ? { ...f, content: newContent, isDirty: true } : f
       )
     );
 
-    // Buffer write (debounced at the component level)
-    driveService.updateFile(fileId, newContent).catch(() => {});
+    // Debounce the API write — cancel previous timer for this file
+    const existingTimer = writeBufferTimers.current.get(fileId);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    writeBufferTimers.current.set(fileId,
+      setTimeout(() => {
+        driveService.updateFile(fileId, newContent).catch(() => {});
+        writeBufferTimers.current.delete(fileId);
+      }, 2000) // 2-second debounce on top of Editor's 500ms
+    );
+
     editorService.markDirty(fileId, true).catch(() => {});
   }, []);
 
   // ── Save file (Ctrl+S — immediate flush) ────────────────────────────
   const saveFile = useCallback(async (fileId) => {
-    const file = openFiles.find((f) => f.fileId === fileId);
-    if (!file) return;
+    // Read latest content from ref to avoid stale closure
+    const file = openFilesRef.current.find((f) => f.fileId === fileId);
+    if (!file || file.content === null) return;
+
+    // Cancel any pending write buffer — we're flushing now
+    const timer = writeBufferTimers.current.get(fileId);
+    if (timer) {
+      clearTimeout(timer);
+      writeBufferTimers.current.delete(fileId);
+    }
 
     setSaveStatus('saving');
     try {
@@ -136,12 +185,37 @@ export const EditorProvider = ({ children }) => {
     } catch {
       setSaveStatus('error');
     }
-  }, [openFiles]);
+  }, []); // No dependencies — uses refs
 
   // ── Switch active tab ───────────────────────────────────────────────
   const switchTab = useCallback((fileId) => {
     setActiveFileId(fileId);
+
+    // If content was never loaded (restored session), load it now
+    const file = openFilesRef.current.find((f) => f.fileId === fileId);
+    if (file && file.content === null) {
+      driveService.readFile(fileId).then((res) => {
+        const content = res.data?.data?.content ?? '';
+        setOpenFiles((prev) =>
+          prev.map((f) => f.fileId === fileId ? { ...f, content } : f)
+        );
+      }).catch(() => {
+        setOpenFiles((prev) =>
+          prev.map((f) => f.fileId === fileId && f.content === null ? { ...f, content: '' } : f)
+        );
+      });
+    }
+
     editorService.setActiveFile(fileId).catch(() => {});
+  }, []);
+
+  // ── Cleanup all write buffer timers on unmount ──────────────────────
+  useEffect(() => {
+    return () => {
+      writeBufferTimers.current.forEach((timer) => clearTimeout(timer));
+      writeBufferTimers.current.clear();
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
   }, []);
 
   const activeFile = openFiles.find((f) => f.fileId === activeFileId) || null;

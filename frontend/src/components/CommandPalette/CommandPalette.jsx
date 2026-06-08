@@ -49,7 +49,7 @@ const CommandPalette = ({ tree }) => {
     return result;
   };
 
-  const files = tree ? flattenTree(tree) : [];
+  const files = tree?.children ? flattenTree(tree.children) : [];
   
   const commands = [
     { id: 'cmd-run', name: 'Run Active File', icon: <PlayCircle size={15} />, action: () => {} },

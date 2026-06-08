@@ -30,17 +30,16 @@ function ProtectedRoute({ children }) {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        height: '100vh', background: '#0d1117', color: '#c9d1d9',
-        fontFamily: "'Inter', sans-serif",
+        height: '100vh', background: 'var(--bg-default)', color: 'var(--text-primary)',
+        fontFamily: 'var(--font-ui)',
       }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{
-            width: 40, height: 40, border: '3px solid #21262d', borderTopColor: '#58a6ff',
+            width: 40, height: 40, border: '3px solid var(--bg-emphasis)', borderTopColor: 'var(--info)',
             borderRadius: '50%', animation: 'spin 0.8s linear infinite',
             margin: '0 auto 16px',
           }} />
-          <p style={{ fontSize: 14 }}>Loading Orion IDE...</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          <p style={{ fontSize: 'var(--font-size-base)' }}>Loading Orion IDE...</p>
         </div>
       </div>
     );

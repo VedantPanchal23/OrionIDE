@@ -193,7 +193,7 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
 
         {/* Vertical Resize Handle */}
         <PanelResizeHandle style={{ width: 4, background: 'transparent', cursor: 'col-resize', transition: 'background 0.2s' }} 
-          onMouseEnter={(e) => { e.currentTarget.style.background = '#58a6ff'; }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-blue)'; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
         />
 
@@ -217,8 +217,8 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
             </Panel>
 
             {/* Horizontal Resize Handle */}
-            <PanelResizeHandle style={{ height: 4, background: 'transparent', cursor: 'row-resize', transition: 'background 0.2s', borderTop: '1px solid #21262d' }} 
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#58a6ff'; }}
+            <PanelResizeHandle style={{ height: 4, background: 'transparent', cursor: 'row-resize', transition: 'background 0.2s', borderTop: '1px solid var(--border-default)' }} 
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-blue)'; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
             />
 

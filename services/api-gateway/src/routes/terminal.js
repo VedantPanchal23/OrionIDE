@@ -14,9 +14,7 @@ const terminalProxy = createProxyMiddleware({
   target: TERMINAL_SERVICE_URL,
   changeOrigin: true,
   ws: true, // Enable WebSocket proxying for PTY connections
-  pathRewrite: {
-    '^/': '/terminal/', // Express strips /api/terminal, so /sessions → /terminal/sessions
-  },
+  // No pathRewrite needed — terminal-service expects /terminal/sessions and /ws/terminal
   timeout: 0, // No timeout for long-lived terminal connections
   on: {
     proxyReq: (proxyReq, req) => {

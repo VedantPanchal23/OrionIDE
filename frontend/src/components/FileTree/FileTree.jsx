@@ -37,26 +37,26 @@ const ContextMenu = ({ x, y, options, onClose }) => {
   return (
     <div ref={ref} style={{
       position: 'fixed', left: x, top: y, zIndex: 1000,
-      background: '#161b22', border: '1px solid #30363d', borderRadius: 6,
+      background: 'var(--bg-subtle)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)',
       padding: '4px 0', minWidth: 160,
-      boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-      fontFamily: "'Inter', sans-serif", fontSize: 13,
+      boxShadow: 'var(--shadow-md)',
+      fontFamily: 'var(--font-ui)', fontSize: 'var(--font-size-md)',
     }}>
       {options.map((opt, i) =>
         opt.separator ? (
-          <div key={i} style={{ height: 1, background: '#21262d', margin: '4px 0' }} />
+          <div key={i} style={{ height: 1, background: 'var(--bg-emphasis)', margin: '4px 0' }} />
         ) : (
           <div
             key={i}
             onClick={() => { opt.action(); onClose(); }}
             style={{
-              padding: '6px 12px', cursor: 'pointer', color: opt.danger ? '#f85149' : '#c9d1d9',
-              display: 'flex', alignItems: 'center', gap: 8, transition: 'background 0.1s',
+              padding: '6px 12px', cursor: 'pointer', color: opt.danger ? 'var(--accent-red-emphasis)' : 'var(--text-primary)',
+              display: 'flex', alignItems: 'center', gap: 8, transition: 'background var(--transition-fast)',
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = '#21262d'; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-emphasis)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
           >
-            {opt.icon && <span style={{ display: 'flex', color: '#7d8590' }}>{opt.icon}</span>}
+            {opt.icon && <span style={{ display: 'flex', color: 'var(--text-muted)' }}>{opt.icon}</span>}
             {opt.label}
           </div>
         )
