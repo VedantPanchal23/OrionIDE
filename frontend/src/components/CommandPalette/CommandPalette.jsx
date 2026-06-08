@@ -9,7 +9,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useEditor } from '../../context/EditorContext';
 import { Search, File, PlayCircle, Settings, X, Terminal, Command } from 'lucide-react';
 
-const CommandPalette = ({ tree }) => {
+const CommandPalette = ({ tree, onRun, onNewTerminal, onOpenSettings }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -52,9 +52,9 @@ const CommandPalette = ({ tree }) => {
   const files = tree?.children ? flattenTree(tree.children) : [];
   
   const commands = [
-    { id: 'cmd-run', name: 'Run Active File', icon: <PlayCircle size={15} />, action: () => {} },
-    { id: 'cmd-settings', name: 'Open Settings', icon: <Settings size={15} />, action: () => {} },
-    { id: 'cmd-terminal', name: 'New Terminal', icon: <Terminal size={15} />, action: () => {} },
+    { id: 'cmd-run', name: 'Run Active File', icon: <PlayCircle size={15} />, action: () => { if (onRun) onRun(); } },
+    { id: 'cmd-settings', name: 'Open Settings', icon: <Settings size={15} />, action: () => { if (onOpenSettings) onOpenSettings(); } },
+    { id: 'cmd-terminal', name: 'New Terminal', icon: <Terminal size={15} />, action: () => { if (onNewTerminal) onNewTerminal(); } },
   ];
 
   const items = [

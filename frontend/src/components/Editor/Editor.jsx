@@ -2,17 +2,20 @@
  * Orion IDE — Monaco Code Editor Component
  *
  * Core editor with syntax highlighting, Ctrl+S save, and debounced content updates.
+ * Reads editor preferences (fontSize, tabSize, minimap, etc.) from ThemeContext.
  */
 
 import React, { useRef, useCallback, useEffect } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { useEditor } from '../../context/EditorContext';
+import { useTheme } from '../../context/ThemeContext';
 import { registerAllSnippets } from './snippets';
 
 const DEBOUNCE_MS = 500;
 
 const Editor = ({ fileId, fileName, language, initialContent }) => {
   const { updateContent, saveFile, setCursorPosition } = useEditor();
+  const { editorFontSize, editorFontFamily, tabSize, wordWrap, minimap, lineNumbers } = useTheme();
   const editorRef = useRef(null);
   const debounceTimerRef = useRef(null);
 
@@ -33,6 +36,20 @@ const Editor = ({ fileId, fileName, language, initialContent }) => {
       setCursorPosition({ line: e.position.lineNumber, column: e.position.column });
     });
   };
+
+  // Update editor options when preferences change
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.updateOptions({
+        fontSize: editorFontSize,
+        fontFamily: editorFontFamily,
+        tabSize,
+        wordWrap,
+        minimap: { enabled: minimap, scale: 1 },
+        lineNumbers,
+      });
+    }
+  }, [editorFontSize, editorFontFamily, tabSize, wordWrap, minimap, lineNumbers]);
 
   // Debounced onChange → write buffer
   const handleChange = useCallback((value) => {
@@ -85,13 +102,13 @@ const Editor = ({ fileId, fileName, language, initialContent }) => {
           });
         }}
         options={{
-          fontSize: 14,
-          fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+          fontSize: editorFontSize,
+          fontFamily: editorFontFamily,
           fontLigatures: true,
-          tabSize: 2,
-          wordWrap: 'on',
-          minimap: { enabled: true, scale: 1 },
-          lineNumbers: 'on',
+          tabSize,
+          wordWrap,
+          minimap: { enabled: minimap, scale: 1 },
+          lineNumbers,
           scrollBeyondLastLine: false,
           automaticLayout: true,
           smoothScrolling: true,
@@ -107,7 +124,7 @@ const Editor = ({ fileId, fileName, language, initialContent }) => {
         loading={
           <div style={{
             height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: '#0d1117', color: '#484f58', fontFamily: 'Inter, sans-serif',
+            background: 'var(--bg-default)', color: 'var(--text-disabled)', fontFamily: 'var(--font-ui)',
           }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 24, marginBottom: 8, animation: 'pulse 1.5s infinite' }}>⚡</div>

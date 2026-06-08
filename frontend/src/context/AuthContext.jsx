@@ -10,6 +10,7 @@
 
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import api from '../services/api';
+import { connect as connectNotifications, disconnect as disconnectNotifications } from '../services/notificationService';
 
 const AuthContext = createContext(null);
 
@@ -55,6 +56,18 @@ export function AuthProvider({ children }) {
       }
       return config;
     });
+  }, [token]);
+
+  /**
+   * Connect/disconnect SSE notifications when auth state changes.
+   */
+  useEffect(() => {
+    if (token) {
+      connectNotifications(token);
+    } else {
+      disconnectNotifications();
+    }
+    return () => disconnectNotifications();
   }, [token]);
 
   /**

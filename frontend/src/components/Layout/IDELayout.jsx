@@ -13,12 +13,14 @@ import TerminalPanel from '../Terminal/TerminalPanel';
 import RunButton from '../Topbar/RunButton';
 import FileTree from '../FileTree/FileTree';
 import AgentPanel from '../AgentPanel/AgentPanel';
+import Settings from '../Settings/Settings';
+import SearchPanel from '../Search/SearchPanel';
 import CommandPalette from '../CommandPalette/CommandPalette';
 import useTerminal from '../../hooks/useTerminal';
 import useFileTree from '../../hooks/useFileTree';
 import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 
-import { Files, Search, GitBranch, PlayCircle, Bot, ArrowLeft } from 'lucide-react';
+import { Files, Search, GitBranch, PlayCircle, Bot, Settings as SettingsIcon, ArrowLeft } from 'lucide-react';
 
 const ICONS = {
   files: Files,
@@ -33,6 +35,7 @@ const PANELS = [
   { id: 'git', icon: ICONS.git, title: 'Source Control' },
   { id: 'run', icon: ICONS.run, title: 'Run & Debug' },
   { id: 'agent', title: 'AI Agent' },
+  { id: 'settings', title: 'Settings' },
 ];
 
 /* ── User Menu ────────────────────────────────────────────────────────── */
@@ -87,6 +90,8 @@ const menuBtnStyle = {
 /* ── Sidebar Panel Content ────────────────────────────────────────────── */
 function SidebarContent({ panel, tree, expandedFolders, isLoading, error, onToggleFolder, onCreateItem, onDeleteItem, onRenameItem, onRefresh }) {
   if (panel === 'agent') return <AgentPanel />;
+  if (panel === 'settings') return <Settings />;
+  if (panel === 'search') return <SearchPanel tree={tree} />;
 
   if (panel === 'files') {
     return (
@@ -104,11 +109,19 @@ function SidebarContent({ panel, tree, expandedFolders, isLoading, error, onTogg
     );
   }
 
-  // Placeholder for other panels
-  const labels = { search: 'Search across files', git: 'Source control', run: 'Run & Debug' };
+  // Stub panels with helpful messages
+  const stubs = {
+    git: { icon: '⎇', title: 'Source Control', desc: 'Git integration requires a local repository. Coming in a future update.' },
+    run: { icon: '▶', title: 'Run & Debug', desc: 'Use the Run button in the editor toolbar, or press Ctrl+P → "Run Active File".' },
+  };
+  const stub = stubs[panel];
   return (
-    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, textAlign: 'center' }}>
-      <div style={{ fontSize: 'var(--font-size-md)', color: 'var(--text-disabled)' }}>{labels[panel] || 'Coming soon'}</div>
+    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, textAlign: 'center' }}>
+      <div>
+        <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.4 }}>{stub?.icon || '⚙'}</div>
+        <div style={{ fontSize: 'var(--font-size-base)', color: 'var(--text-secondary)', fontWeight: 500, marginBottom: 4 }}>{stub?.title || panel}</div>
+        <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-disabled)', lineHeight: 1.4 }}>{stub?.desc || ''}</div>
+      </div>
     </div>
   );
 }
@@ -130,7 +143,20 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
       display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden',
       background: 'var(--bg-default)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)',
     }}>
-      <CommandPalette tree={fileTree.tree} />
+      <CommandPalette
+        tree={fileTree.tree}
+        onRun={() => {
+          // Trigger run on the active file via RunButton's logic
+          const activeFile = document.querySelector('[data-run-trigger]');
+          if (activeFile) activeFile.click();
+        }}
+        onOpenSettings={() => setActivePanel('settings')}
+        onNewTerminal={() => {
+          // Click the "+" terminal button
+          const btn = document.querySelector('[data-new-terminal]');
+          if (btn) btn.click();
+        }}
+      />
       {/* Activity bar */}
       <aside style={{
         width: 48, background: 'var(--bg-canvas)', borderRight: '1px solid var(--border-default)',
@@ -148,7 +174,7 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
             onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--bg-subtle)'; }}
             onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
             >
-              {p.icon ? <p.icon size={20} color={isActive ? 'var(--text-primary)' : 'var(--text-muted)'} /> : <Bot size={20} color={isActive ? 'var(--text-primary)' : 'var(--text-muted)'} />}
+              {p.icon ? <p.icon size={20} color={isActive ? 'var(--text-primary)' : 'var(--text-muted)'} /> : p.id === 'settings' ? <SettingsIcon size={20} color={isActive ? 'var(--text-primary)' : 'var(--text-muted)'} /> : <Bot size={20} color={isActive ? 'var(--text-primary)' : 'var(--text-muted)'} />}
             </button>
           );
         })}

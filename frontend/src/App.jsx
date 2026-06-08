@@ -12,6 +12,7 @@ import React, { useState, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { EditorProvider } from './context/EditorContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { ToastProvider } from './components/Toast/Toast';
 import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import LoginPage from './components/Auth/LoginPage';
@@ -98,20 +99,22 @@ function IDEPage() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <AuthProvider>
-        <ToastProvider>
-          <BrowserRouter>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/auth/success" element={<AuthSuccess />} />
-              <Route path="/ide" element={<ProtectedRoute><IDEPage /></ProtectedRoute>} />
-              <Route path="/" element={<Navigate to="/ide" replace />} />
-              <Route path="/auth/callback" element={<Navigate to="/login" replace />} />
-              <Route path="*" element={<Navigate to="/ide" replace />} />
-            </Routes>
-          </BrowserRouter>
-        </ToastProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <ToastProvider>
+            <BrowserRouter>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/auth/success" element={<AuthSuccess />} />
+                <Route path="/ide" element={<ProtectedRoute><IDEPage /></ProtectedRoute>} />
+                <Route path="/" element={<Navigate to="/ide" replace />} />
+                <Route path="/auth/callback" element={<Navigate to="/login" replace />} />
+                <Route path="*" element={<Navigate to="/ide" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </ToastProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }
