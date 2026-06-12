@@ -1,4 +1,4 @@
-﻿# -- Stage 1: Builder --
+# -- Stage 1: Builder --
 FROM node:18-alpine AS builder
 WORKDIR /build
 COPY package*.json ./
@@ -8,7 +8,7 @@ RUN npm ci --only=production && cp -R node_modules /prod_modules
 FROM node:18-alpine AS runner
 ENV NODE_ENV=production
 WORKDIR /app
-RUN addgroup -S orion && adduser -S orion -G orion
+RUN addgroup -S orion && adduser -S orion -G orion -h /home/orion
 COPY --from=builder /prod_modules ./node_modules
 COPY src/ ./src/
 RUN chown -R orion:orion /app

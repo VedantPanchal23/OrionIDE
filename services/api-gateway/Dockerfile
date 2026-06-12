@@ -14,7 +14,7 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 # Non-root user
-RUN addgroup -S orion && adduser -S orion -G orion
+RUN addgroup -S orion && adduser -S orion -G orion -h /home/orion
 
 # Copy production dependencies
 COPY --from=builder /prod_modules ./node_modules

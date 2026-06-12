@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
     git curl wget \
     && rm -rf /var/lib/apt/lists/*
 
-RUN addgroup --system orion && adduser --system --ingroup orion orion
+RUN addgroup --system orion && adduser --system --ingroup orion --home /home/orion orion
 
 COPY --from=builder /prod_modules ./node_modules
 COPY src/ ./src/
