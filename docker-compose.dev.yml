@@ -220,6 +220,7 @@ services:
     container_name: orion-piston-dev
     restart: unless-stopped
     privileged: true
+    cgroup: host
     ports:
       - "2000:2000"
     tmpfs:
@@ -228,6 +229,7 @@ services:
       - OUTPUT_MAX_SIZE=65536
       - MAX_PROCESS_COUNT=64
       - RUN_TIMEOUT=15000
+      - PISTON_DISABLE_NETWORKING=true
     volumes:
       - piston-packages:/piston/packages
     networks:
