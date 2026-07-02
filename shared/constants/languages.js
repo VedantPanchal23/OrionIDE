@@ -30,7 +30,7 @@ const LANGUAGES = Object.freeze([
   },
   {
     id: 'javascript', displayName: 'JavaScript', extensions: ['.js'],
-    monacoLanguage: 'javascript', pistonLanguage: 'javascript',
+    monacoLanguage: 'javascript', pistonLanguage: 'node',
     pistonVersion: '18.15.0',
     runCommand: 'node {file}', compileCommand: null,
     icon: '\u{1F7E8}', color: '#F7DF1E',
@@ -54,7 +54,7 @@ const LANGUAGES = Object.freeze([
   },
   {
     id: 'c', displayName: 'C', extensions: ['.c'],
-    monacoLanguage: 'c', pistonLanguage: 'c',
+    monacoLanguage: 'c', pistonLanguage: 'gcc',
     pistonVersion: '10.2.0',
     runCommand: './main', compileCommand: 'gcc {file} -o main',
     icon: '\u2699\uFE0F', color: '#555555',
@@ -62,7 +62,7 @@ const LANGUAGES = Object.freeze([
   },
   {
     id: 'cpp', displayName: 'C++', extensions: ['.cpp', '.cc', '.cxx'],
-    monacoLanguage: 'cpp', pistonLanguage: 'cpp',
+    monacoLanguage: 'cpp', pistonLanguage: 'gcc',
     pistonVersion: '10.2.0',
     runCommand: './main', compileCommand: 'g++ {file} -o main',
     icon: '\u26A1', color: '#F34B7D',
@@ -70,8 +70,8 @@ const LANGUAGES = Object.freeze([
   },
   {
     id: 'csharp', displayName: 'C#', extensions: ['.cs'],
-    monacoLanguage: 'csharp', pistonLanguage: 'csharp',
-    pistonVersion: '6.12.0',
+    monacoLanguage: 'csharp', pistonLanguage: 'dotnet',
+    pistonVersion: '5.0.201',
     runCommand: 'dotnet-script {file}', compileCommand: null,
     icon: '\u{1F7E3}', color: '#178600',
     fileTemplate: 'using System;\n\nclass Program {\n    static void Main() {\n        Console.WriteLine("Hello, Orion!");\n    }\n}\n',
@@ -87,7 +87,7 @@ const LANGUAGES = Object.freeze([
   {
     id: 'rust', displayName: 'Rust', extensions: ['.rs'],
     monacoLanguage: 'rust', pistonLanguage: 'rust',
-    pistonVersion: '1.50.0',
+    pistonVersion: '1.68.2',
     runCommand: './main', compileCommand: 'rustc {file} -o main',
     icon: '\u{1F980}', color: '#DEA584',
     fileTemplate: 'fn main() {\n    println!("Hello, Orion!");\n}\n',
@@ -111,7 +111,7 @@ const LANGUAGES = Object.freeze([
   {
     id: 'kotlin', displayName: 'Kotlin', extensions: ['.kt'],
     monacoLanguage: 'kotlin', pistonLanguage: 'kotlin',
-    pistonVersion: '1.6.20',
+    pistonVersion: '1.8.20',
     runCommand: 'java -jar main.jar', compileCommand: 'kotlinc {file} -include-runtime -d main.jar',
     icon: '\u{1F3AF}', color: '#A97BFF',
     fileTemplate: 'fun main() {\n    println("Hello, Orion!")\n}\n',

@@ -93,7 +93,7 @@ const createExecution = async (userId, language, fileName, code, stdin) => {
   // Execute asynchronously
   setImmediate(async () => {
     try {
-      const result = await execute(resolved.pistonLanguage, fileName, code, stdin);
+      const result = await execute(resolved.id, fileName, code, stdin);
 
       // Push SSE events
       const events = activeStreams.get(executionId) || [];

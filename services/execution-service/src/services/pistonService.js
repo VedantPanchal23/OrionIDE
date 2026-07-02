@@ -132,11 +132,11 @@ const getLanguagesWithStatus = async () => {
  */
 const resolveLanguage = (language) => {
   let lang = getById(language);
-  if (lang) return { pistonLanguage: lang.pistonLanguage, version: lang.pistonVersion, displayName: lang.displayName };
+  if (lang) return { id: lang.id, pistonLanguage: lang.pistonLanguage, version: lang.pistonVersion, displayName: lang.displayName };
   lang = getByExtension(language);
-  if (lang) return { pistonLanguage: lang.pistonLanguage, version: lang.pistonVersion, displayName: lang.displayName };
+  if (lang) return { id: lang.id, pistonLanguage: lang.pistonLanguage, version: lang.pistonVersion, displayName: lang.displayName };
   lang = getByPistonId(language);
-  if (lang) return { pistonLanguage: lang.pistonLanguage, version: lang.pistonVersion, displayName: lang.displayName };
+  if (lang) return { id: lang.id, pistonLanguage: lang.pistonLanguage, version: lang.pistonVersion, displayName: lang.displayName };
   return null;
 };
 
