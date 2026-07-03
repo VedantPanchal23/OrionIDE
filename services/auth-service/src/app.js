@@ -33,8 +33,8 @@ const PORT = process.env.PORT || 3001;
 
 // â”€â”€ Middleware Stack â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use(helmet());
-app.use(cors(require('../../../../shared/utils/corsConfig')));
-app.options('*', cors(require('../../../../shared/utils/corsConfig')));
+app.use(cors(require('../../../shared/utils/corsConfig')));
+app.options('*', cors(require('../../../shared/utils/corsConfig')));
 app.use(express.json());
 app.use(cookieParser());
 

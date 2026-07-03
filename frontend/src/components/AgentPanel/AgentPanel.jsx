@@ -30,36 +30,36 @@ const STEPS = [
 
 const PlannerCard = ({ output }) => (
   <div style={{ fontSize: 13 }}>
-    <div style={{ fontSize: 15, fontWeight: 700, color: '#c9d1d9', marginBottom: 8 }}>{output.projectName}</div>
-    <p style={{ color: '#8b949e', margin: '0 0 12px', lineHeight: '1.5' }}>{output.description}</p>
+    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>{output.projectName}</div>
+    <p style={{ color: 'var(--text-secondary)', margin: '0 0 12px', lineHeight: '1.5' }}>{output.description}</p>
 
     <div style={{ marginBottom: 12 }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: '#7d8590', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tech Stack</span>
+      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tech Stack</span>
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
         {output.techStack?.map((tech) => (
-          <span key={tech} style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: 4, padding: '2px 8px', fontSize: 11, color: '#c9d1d9' }}>{tech}</span>
+          <span key={tech} style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-default)', borderRadius: 4, padding: '2px 8px', fontSize: 11, color: 'var(--text-primary)' }}>{tech}</span>
         ))}
       </div>
     </div>
 
     <div style={{ marginBottom: 12 }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: '#7d8590', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Files ({output.estimatedFiles})</span>
+      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Files ({output.estimatedFiles})</span>
       <div style={{ marginTop: 4 }}>
         {output.fileStructure?.map((f, i) => (
           <div key={i} style={{ display: 'flex', gap: 8, padding: '3px 0', fontSize: 12 }}>
-            <code style={{ color: '#58a6ff', fontFamily: "'JetBrains Mono', monospace", fontSize: 11, flexShrink: 0 }}>{f.path}</code>
-            <span style={{ color: '#7d8590' }}>{f.purpose}</span>
+            <code style={{ color: 'var(--accent-blue-subtle)', fontFamily: "'JetBrains Mono', monospace", fontSize: 11, flexShrink: 0 }}>{f.path}</code>
+            <span style={{ color: 'var(--text-muted)' }}>{f.purpose}</span>
           </div>
         ))}
       </div>
     </div>
 
     <div>
-      <span style={{ fontSize: 11, fontWeight: 600, color: '#7d8590', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Build Order</span>
+      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Build Order</span>
       <div style={{ marginTop: 4 }}>
         {output.buildOrder?.map((step, i) => (
-          <div key={i} style={{ padding: '2px 0', fontSize: 12, color: '#c9d1d9' }}>
-            <span style={{ color: '#484f58', fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{i + 1}.</span> {step}
+          <div key={i} style={{ padding: '2px 0', fontSize: 12, color: 'var(--text-primary)' }}>
+            <span style={{ color: 'var(--border-emphasis)', fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>{i + 1}.</span> {step}
           </div>
         ))}
       </div>
@@ -72,22 +72,22 @@ const PlannerCard = ({ output }) => (
 const DesignerCard = ({ output }) => (
   <div style={{ fontSize: 13 }}>
     <div style={{ marginBottom: 12 }}>
-      <span style={{ fontSize: 11, fontWeight: 600, color: '#7d8590', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Files ({output.files?.length})</span>
+      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Files ({output.files?.length})</span>
       {output.files?.map((f, i) => (
-        <div key={i} style={{ padding: '4px 0', borderBottom: '1px solid #161b22', fontSize: 12 }}>
+        <div key={i} style={{ padding: '4px 0', borderBottom: '1px solid var(--bg-subtle)', fontSize: 12 }}>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <code style={{ color: '#58a6ff', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{f.path}</code>
-            <span style={{ fontSize: 10, padding: '1px 6px', background: '#21262d', borderRadius: 3, color: '#7d8590' }}>{f.language}</span>
+            <code style={{ color: 'var(--accent-blue-subtle)', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{f.path}</code>
+            <span style={{ fontSize: 10, padding: '1px 6px', background: 'var(--bg-emphasis)', borderRadius: 3, color: 'var(--text-muted)' }}>{f.language}</span>
           </div>
-          <div style={{ color: '#7d8590', marginTop: 2 }}>{f.purpose}</div>
+          <div style={{ color: 'var(--text-muted)', marginTop: 2 }}>{f.purpose}</div>
         </div>
       ))}
     </div>
     <div>
-      <span style={{ fontSize: 11, fontWeight: 600, color: '#7d8590', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Implementation Order</span>
+      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Implementation Order</span>
       {output.implementationOrder?.map((path, i) => (
-        <div key={i} style={{ padding: '2px 0', fontSize: 12, color: '#c9d1d9' }}>
-          <span style={{ color: '#484f58', fontFamily: "'JetBrains Mono', monospace", fontSize: 10, minWidth: 16 }}>{i + 1}.</span>
+        <div key={i} style={{ padding: '2px 0', fontSize: 12, color: 'var(--text-primary)' }}>
+          <span style={{ color: 'var(--border-emphasis)', fontFamily: "'JetBrains Mono', monospace", fontSize: 10, minWidth: 16 }}>{i + 1}.</span>
           <code style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, marginLeft: 4 }}>{path}</code>
         </div>
       ))}
@@ -106,13 +106,13 @@ const RunConfigCard = ({ output }) => (
         ['Version', output.pistonVersion],
         ['Command', output.runCommand],
       ].map(([label, value]) => (
-        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #161b22' }}>
-          <span style={{ color: '#7d8590', fontSize: 12 }}>{label}</span>
-          <code style={{ color: '#c9d1d9', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{value}</code>
+        <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--bg-subtle)' }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{label}</span>
+          <code style={{ color: 'var(--text-primary)', fontFamily: "'JetBrains Mono', monospace", fontSize: 11 }}>{value}</code>
         </div>
       ))}
     </div>
-    <p style={{ margin: '12px 0 0', fontSize: 12, color: '#8b949e', lineHeight: '1.5' }}>
+    <p style={{ margin: '12px 0 0', fontSize: 12, color: 'var(--text-secondary)', lineHeight: '1.5' }}>
       {output.explanation}
     </p>
   </div>
@@ -157,12 +157,12 @@ const AgentPanel = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'running': return '#58a6ff';
-      case 'waiting': return '#e3b341';
+      case 'running': return 'var(--accent-blue-subtle)';
+      case 'waiting': return 'var(--accent-yellow)';
       case 'approved': return '#3fb950';
-      case 'failed': return '#f85149';
+      case 'failed': return 'var(--accent-red-emphasis)';
       case 'override': return '#d29922';
-      default: return '#484f58';
+      default: return 'var(--border-emphasis)';
     }
   };
 
@@ -184,20 +184,20 @@ const AgentPanel = () => {
   // Pipeline complete
   if (session?.status === 'complete') {
     return (
-      <div style={{ height: '100%', overflow: 'auto', background: '#010409' }}>
+      <div style={{ height: '100%', overflow: 'auto', background: 'var(--bg-canvas)' }}>
         <PipelineComplete session={session} onReset={handleReset} />
       </div>
     );
   }
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#010409' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-canvas)' }}>
       {/* Goal input */}
       {!session && <GoalInput onStart={start} isRunning={isRunning} />}
 
       {/* Error */}
       {error && (
-        <div style={{ margin: '0 16px 8px', padding: '8px 12px', background: '#1c0c0c', border: '1px solid #f8514933', borderRadius: 6, color: '#f85149', fontSize: 12 }}>
+        <div style={{ margin: '0 16px 8px', padding: '8px 12px', background: '#1c0c0c', border: '1px solid var(--accent-red-emphasis)33', borderRadius: 6, color: 'var(--accent-red-emphasis)', fontSize: 12 }}>
           {error}
         </div>
       )}
@@ -205,10 +205,10 @@ const AgentPanel = () => {
       {session && (
         <>
           {/* Step progress bar */}
-          <div style={{ padding: '12px 12px', borderBottom: '1px solid #21262d', display: 'flex', gap: 2, alignItems: 'center' }}>
+          <div style={{ padding: '12px 12px', borderBottom: '1px solid var(--bg-emphasis)', display: 'flex', gap: 2, alignItems: 'center' }}>
             {STEPS.map((step, i) => {
               const status = getStepStatus(step.num);
-              const bgColor = status === 'approved' ? '#238636' : status === 'running' ? '#1f6feb' : status === 'waiting' || status === 'override' ? '#9e6a03' : status === 'failed' ? '#da3633' : '#21262d';
+              const bgColor = status === 'approved' ? 'var(--accent-green)' : status === 'running' ? 'var(--accent-blue)' : status === 'waiting' || status === 'override' ? '#9e6a03' : status === 'failed' ? 'var(--accent-red)' : 'var(--bg-emphasis)';
               return (
                 <React.Fragment key={step.num}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 3, opacity: status === 'pending' ? 0.4 : 1 }}>
@@ -217,16 +217,16 @@ const AgentPanel = () => {
                     </div>
                     <span style={{ fontSize: 9, fontWeight: 500, color: getStatusColor(status), whiteSpace: 'nowrap' }}>{step.label}</span>
                   </div>
-                  {i < STEPS.length - 1 && <div style={{ flex: 1, height: 1, minWidth: 4, background: status === 'approved' ? '#238636' : '#21262d' }} />}
+                  {i < STEPS.length - 1 && <div style={{ flex: 1, height: 1, minWidth: 4, background: status === 'approved' ? 'var(--accent-green)' : 'var(--bg-emphasis)' }} />}
                 </React.Fragment>
               );
             })}
           </div>
 
           {/* Step header + file progress */}
-          <div style={{ padding: '8px 14px', borderBottom: '1px solid #21262d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ padding: '8px 14px', borderBottom: '1px solid var(--bg-emphasis)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#c9d1d9' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
                 Step {session.currentStep}: {currentStep?.label || 'Complete'}
               </span>
               <div style={{ fontSize: 11, color: getStatusColor(getStepStatus(session.currentStep)), display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
@@ -234,7 +234,7 @@ const AgentPanel = () => {
                 {getStatusLabel(getStepStatus(session.currentStep))}
               </div>
               {session.currentStep === 3 && session.implementer?.totalFiles > 0 && (
-                <div style={{ fontSize: 10, color: '#58a6ff', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>
+                <div style={{ fontSize: 10, color: 'var(--accent-blue-subtle)', marginTop: 2, fontFamily: "'JetBrains Mono', monospace" }}>
                   File {Math.min((session.implementer.currentIndex || 0) + 1, session.implementer.totalFiles)} of {session.implementer.totalFiles}
                 </div>
               )}
@@ -290,15 +290,15 @@ const AgentPanel = () => {
             {/* Thinking / Empty state */}
             {getStepStatus(session.currentStep) === 'running' && !session[currentStep?.key]?.output && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12 }}>
-                <Loader2 size={24} color="#58a6ff" className="spin" />
-                <span style={{ color: '#7d8590', fontSize: 13 }}>{currentStep?.label} is thinking...</span>
+                <Loader2 size={24} color="var(--accent-blue-subtle)" className="spin" />
+                <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{currentStep?.label} is thinking...</span>
               </div>
             )}
           </div>
 
           {/* Approve/Reject controls */}
           {isWaiting && (
-            <div style={{ padding: '12px 14px', borderTop: '1px solid #21262d', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ padding: '12px 14px', borderTop: '1px solid var(--bg-emphasis)', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {showRejectInput && (
                 <div style={{ display: 'flex', gap: 6 }}>
                   <input
@@ -306,27 +306,27 @@ const AgentPanel = () => {
                     onChange={(e) => setRejectReason(e.target.value)}
                     placeholder="Reason for rejection (required)"
                     onKeyDown={(e) => { if (e.key === 'Enter') handleReject(); }}
-                    style={{ flex: 1, background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, color: '#c9d1d9', padding: '8px 12px', fontSize: 12, fontFamily: "'Inter', sans-serif", outline: 'none' }}
-                    onFocus={(e) => { e.target.style.borderColor = '#f85149'; }}
-                    onBlur={(e) => { e.target.style.borderColor = '#30363d'; }}
+                    style={{ flex: 1, background: 'var(--bg-default)', border: '1px solid var(--border-default)', borderRadius: 6, color: 'var(--text-primary)', padding: '8px 12px', fontSize: 12, fontFamily: "'Inter', sans-serif", outline: 'none' }}
+                    onFocus={(e) => { e.target.style.borderColor = 'var(--accent-red-emphasis)'; }}
+                    onBlur={(e) => { e.target.style.borderColor = 'var(--border-default)'; }}
                   />
                   <button onClick={handleReject} disabled={!rejectReason.trim()} style={{
-                    background: rejectReason.trim() ? '#da3633' : '#21262d', color: '#fff', border: 'none', borderRadius: 6,
+                    background: rejectReason.trim() ? 'var(--accent-red)' : 'var(--bg-emphasis)', color: '#fff', border: 'none', borderRadius: 6,
                     padding: '8px 16px', cursor: !rejectReason.trim() ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 600,
                   }}>Send</button>
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={handleApprove} style={{
-                  flex: 1, padding: '10px 16px', background: '#238636', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer',
+                  flex: 1, padding: '10px 16px', background: 'var(--accent-green)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer',
                   fontSize: 13, fontWeight: 600, fontFamily: "'Inter', sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                   transition: 'background 0.15s',
                 }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = '#2ea043'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = '#238636'; }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-green-emphasis)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--accent-green)'; }}
                 ><Check size={16} /> Approve</button>
                 <button onClick={() => setShowRejectInput(!showRejectInput)} style={{
-                  flex: 1, padding: '10px 16px', background: showRejectInput ? '#21262d' : '#da3633', color: '#fff', border: 'none', borderRadius: 6,
+                  flex: 1, padding: '10px 16px', background: showRejectInput ? 'var(--bg-emphasis)' : 'var(--accent-red)', color: '#fff', border: 'none', borderRadius: 6,
                   cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: "'Inter', sans-serif", transition: 'background 0.15s',
                 }}>{showRejectInput ? 'Cancel' : 'Reject'}</button>
               </div>

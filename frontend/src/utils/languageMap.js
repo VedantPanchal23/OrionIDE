@@ -29,13 +29,13 @@ const LANGUAGES = [
   // ── Non-executable ───────────────────────────────────────────────────
   { id: 'html', displayName: 'HTML', extensions: ['.html', '.htm'], monacoLanguage: 'html', pistonLanguage: null, icon: '\u{1F310}', color: '#E34C26', fileTemplate: '<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <title>Orion</title>\n</head>\n<body>\n    <h1>Hello, Orion!</h1>\n</body>\n</html>\n' },
   { id: 'css', displayName: 'CSS', extensions: ['.css'], monacoLanguage: 'css', pistonLanguage: null, icon: '\u{1F3A8}', color: '#563D7C', fileTemplate: '/* CSS */\nbody {\n    font-family: sans-serif;\n}\n' },
-  { id: 'json', displayName: 'JSON', extensions: ['.json'], monacoLanguage: 'json', pistonLanguage: null, icon: '{}', color: '#7D8590', fileTemplate: '{\n    "name": "orion-project"\n}\n' },
+  { id: 'json', displayName: 'JSON', extensions: ['.json'], monacoLanguage: 'json', pistonLanguage: null, icon: '{}', color: 'var(--text-muted)', fileTemplate: '{\n    "name": "orion-project"\n}\n' },
   { id: 'markdown', displayName: 'Markdown', extensions: ['.md'], monacoLanguage: 'markdown', pistonLanguage: null, icon: '\u{1F4DD}', color: '#083FA1', fileTemplate: '# My Project\n\nBuilt with Orion IDE.\n' },
   { id: 'yaml', displayName: 'YAML', extensions: ['.yaml', '.yml'], monacoLanguage: 'yaml', pistonLanguage: null, icon: '\u2699\uFE0F', color: '#CB171E', fileTemplate: '# YAML\nname: orion-project\n' },
   { id: 'sql', displayName: 'SQL', extensions: ['.sql'], monacoLanguage: 'sql', pistonLanguage: null, icon: '\u{1F5C3}\uFE0F', color: '#E38C00', fileTemplate: '-- SQL\nSELECT 1;\n' },
 ];
 
-const DEFAULT_LANGUAGE = { id: 'plaintext', displayName: 'Plain Text', extensions: [], monacoLanguage: 'plaintext', pistonLanguage: null, icon: 'TXT', color: '#7D8590', fileTemplate: '' };
+const DEFAULT_LANGUAGE = { id: 'plaintext', displayName: 'Plain Text', extensions: [], monacoLanguage: 'plaintext', pistonLanguage: null, icon: 'TXT', color: 'var(--text-muted)', fileTemplate: '' };
 
 /**
  * Get language by filename.

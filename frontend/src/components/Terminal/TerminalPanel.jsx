@@ -30,7 +30,7 @@ import {
  * @typedef {{ id: string, terminalId: string, wsUrl: string, label: string }} TerminalTab
  */
 
-const TerminalPanel = ({ lines, isRunning, onClear }) => {
+const TerminalPanel = ({ lines, isRunning, onClear, projectId }) => {
   const [tabs, setTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -52,7 +52,11 @@ const TerminalPanel = ({ lines, isRunning, onClear }) => {
     setIsCreating(true);
 
     try {
-      const session = await createTerminalSession({ cols: 80, rows: 24 });
+      const session = await createTerminalSession({
+        cols: 80,
+        rows: 24,
+        cwd: projectId ? `/workspace/${projectId}` : '/workspace',
+      });
       tabCounter.current += 1;
       const tab = {
         id: `tab-${tabCounter.current}`,

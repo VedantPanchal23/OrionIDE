@@ -26,6 +26,61 @@ const XTerminal = ({ terminalId, wsUrl, isActive, onExit }) => {
   const reconnectTimerRef = useRef(null);
   const mountedRef = useRef(true);
 
+  // ── WebSocket connection with reconnect ─────────────────────────────
+  const connectWebSocket = useCallback((term, url) => {
+    if (!mountedRef.current) return;
+
+    const ws = new WebSocket(url);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      // Connection established — xterm is ready
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        switch (msg.type) {
+          case 'output':
+            term.write(msg.data);
+            break;
+          case 'connected':
+            // Server confirmed connection — resize to match terminal
+            if (fitAddonRef.current) {
+              try { fitAddonRef.current.fit(); } catch {}
+            }
+            break;
+          case 'exit':
+            term.write('\r\n\x1b[90m[Process exited]\x1b[0m\r\n');
+            if (onExit) onExit(terminalId, msg.code);
+            break;
+          case 'error':
+            term.write(`\r\n\x1b[31m[Error: ${msg.message}]\x1b[0m\r\n`);
+            break;
+          default:
+            break;
+        }
+      } catch {
+        // Non-JSON data — write directly
+        term.write(event.data);
+      }
+    };
+
+    ws.onclose = (event) => {
+      if (!mountedRef.current) return;
+      if (event.code !== 1000) {
+        term.write('\r\n\x1b[33m[Connection lost. Reconnecting...]\x1b[0m\r\n');
+        reconnectTimerRef.current = setTimeout(() => {
+          if (mountedRef.current) connectWebSocket(term, url);
+        }, 2000);
+      }
+    };
+
+    ws.onerror = () => {
+      // onclose will handle reconnect
+    };
+  }, [terminalId, onExit]);
+
   // ── Initialize xterm.js ─────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || !terminalId || !wsUrl) return;
@@ -118,60 +173,7 @@ const XTerminal = ({ terminalId, wsUrl, isActive, onExit }) => {
     };
   }, [terminalId, wsUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── WebSocket connection with reconnect ─────────────────────────────
-  const connectWebSocket = useCallback((term, url) => {
-    if (!mountedRef.current) return;
 
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      // Connection established — xterm is ready
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        switch (msg.type) {
-          case 'output':
-            term.write(msg.data);
-            break;
-          case 'connected':
-            // Server confirmed connection — resize to match terminal
-            if (fitAddonRef.current) {
-              try { fitAddonRef.current.fit(); } catch {}
-            }
-            break;
-          case 'exit':
-            term.write('\r\n\x1b[90m[Process exited]\x1b[0m\r\n');
-            if (onExit) onExit(terminalId, msg.code);
-            break;
-          case 'error':
-            term.write(`\r\n\x1b[31m[Error: ${msg.message}]\x1b[0m\r\n`);
-            break;
-          default:
-            break;
-        }
-      } catch {
-        // Non-JSON data — write directly
-        term.write(event.data);
-      }
-    };
-
-    ws.onclose = (event) => {
-      if (!mountedRef.current) return;
-      if (event.code !== 1000) {
-        term.write('\r\n\x1b[33m[Connection lost. Reconnecting...]\x1b[0m\r\n');
-        reconnectTimerRef.current = setTimeout(() => {
-          if (mountedRef.current) connectWebSocket(term, url);
-        }, 2000);
-      }
-    };
-
-    ws.onerror = () => {
-      // onclose will handle reconnect
-    };
-  }, [terminalId, onExit]);
 
   // ── Re-fit on container resize or tab activation ────────────────────
   useEffect(() => {

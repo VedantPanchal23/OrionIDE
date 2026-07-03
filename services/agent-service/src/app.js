@@ -17,8 +17,8 @@ const app = express();
 const PORT = process.env.PORT || 3005;
 
 app.use(helmet());
-app.use(cors(require('../../../../shared/utils/corsConfig')));
-app.options('*', cors(require('../../../../shared/utils/corsConfig')));
+app.use(cors(require('../../../shared/utils/corsConfig')));
+app.options('*', cors(require('../../../shared/utils/corsConfig')));
 app.use(express.json({ limit: '2mb' }));
 
 app.use((req, res, next) => {

@@ -345,6 +345,48 @@ router.get('/validate', (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// GET /auth/dev-login — Developer mock login bypass
+// ─────────────────────────────────────────────────────────────────────────
+router.get('/dev-login', async (req, res) => {
+  try {
+    const user = {
+      userId: 'dev-user-123',
+      email: 'developer@orion.dev',
+      name: 'Developer Mode',
+      picture: 'https://api.dicebear.com/7.x/bottts/svg?seed=Developer',
+      googleAccessToken: 'mock-token',
+      googleRefreshToken: 'mock-refresh-token',
+      provider: 'google',
+    };
+
+    // Generate tokens
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    // Store refresh token in Redis
+    const redis = await getRedisClient();
+    await storeRefreshToken(redis, user.userId, refreshToken);
+
+    // Set refresh token as httpOnly cookie
+    res.cookie(COOKIE_NAME, refreshToken, COOKIE_OPTIONS);
+
+    // Ensure OrionIDE folder exists (mock-token will trigger local mock directories)
+    ensureOrionFolder(user.googleAccessToken, user.userId).catch(() => {});
+
+    logger.info('Developer logged in bypass mode', {
+      userId: user.userId,
+      email: user.email,
+    });
+
+    // Redirect to frontend auth success page
+    return res.redirect(`${FRONTEND_URL}/auth/success?token=${encodeURIComponent(accessToken)}`);
+  } catch (err) {
+    logger.error('Dev login error', { error: err.message, stack: err.stack });
+    return res.redirect(`${FRONTEND_URL}/login?error=server_error`);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // Helper: Extract Bearer token from Authorization header
 // ─────────────────────────────────────────────────────────────────────────
 const extractBearerToken = (req) => {

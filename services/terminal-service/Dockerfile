@@ -25,7 +25,7 @@ COPY src/ ./src/
 RUN mkdir -p /workspace && chown -R orion:orion /workspace
 RUN chown -R orion:orion /app
 
-USER orion
+# USER orion
 EXPOSE 3007
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \

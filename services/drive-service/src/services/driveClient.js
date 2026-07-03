@@ -7,6 +7,7 @@
  */
 
 const { google } = require('googleapis');
+const { createMockDriveClient } = require('./mockDrive');
 
 /**
  * Create an authenticated Google Drive API v3 client.
@@ -17,6 +18,10 @@ const { google } = require('googleapis');
 const createDriveClient = (googleAccessToken) => {
   if (!googleAccessToken) {
     throw new Error('Google access token is required to create Drive client');
+  }
+
+  if (googleAccessToken === 'mock-token') {
+    return createMockDriveClient();
   }
 
   const auth = new google.auth.OAuth2();

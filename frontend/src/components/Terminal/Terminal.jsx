@@ -12,9 +12,9 @@ import { Trash2, Copy, TerminalSquare } from 'lucide-react';
 /* ── Line color map ───────────────────────────────────────────────────── */
 
 const LINE_COLORS = {
-  stdout: '#c9d1d9',
-  stderr: '#f85149',
-  system: '#7d8590',
+  stdout: 'var(--text-primary)',
+  stderr: 'var(--accent-red-emphasis)',
+  system: 'var(--text-muted)',
   info: '#3fb950',
 };
 
@@ -46,7 +46,7 @@ const Terminal = ({ lines, isRunning, onClear }) => {
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background: '#010409',
+        background: 'var(--bg-canvas)',
         borderTop: 'none',
         flexShrink: 0,
       }}
@@ -59,7 +59,7 @@ const Terminal = ({ lines, isRunning, onClear }) => {
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '4px 12px',
-        borderBottom: '1px solid #21262d',
+        borderBottom: '1px solid var(--bg-emphasis)',
         flexShrink: 0,
       }}>
         <div style={{
@@ -68,7 +68,7 @@ const Terminal = ({ lines, isRunning, onClear }) => {
           gap: 6,
           fontSize: 12,
           fontWeight: 600,
-          color: '#c9d1d9',
+          color: 'var(--text-primary)',
           fontFamily: "'Inter', sans-serif",
         }}>
           <TerminalSquare size={14} />
@@ -78,7 +78,7 @@ const Terminal = ({ lines, isRunning, onClear }) => {
               width: 6,
               height: 6,
               borderRadius: '50%',
-              background: '#58a6ff',
+              background: 'var(--accent-blue-subtle)',
               animation: 'pulse 1s infinite',
             }} />
           )}
@@ -91,7 +91,7 @@ const Terminal = ({ lines, isRunning, onClear }) => {
             style={{
               background: 'none',
               border: 'none',
-              color: copied ? '#3fb950' : '#7d8590',
+              color: copied ? '#3fb950' : 'var(--text-muted)',
               cursor: lines.length === 0 ? 'default' : 'pointer',
               padding: 4,
               borderRadius: 4,
@@ -100,8 +100,8 @@ const Terminal = ({ lines, isRunning, onClear }) => {
               opacity: lines.length === 0 ? 0.4 : 1,
               transition: 'color 0.15s',
             }}
-            onMouseEnter={(e) => { if (lines.length > 0) e.currentTarget.style.color = '#c9d1d9'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = copied ? '#3fb950' : '#7d8590'; }}
+            onMouseEnter={(e) => { if (lines.length > 0) e.currentTarget.style.color = 'var(--text-primary)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = copied ? '#3fb950' : 'var(--text-muted)'; }}
           >
             <Copy size={14} />
           </button>
@@ -112,7 +112,7 @@ const Terminal = ({ lines, isRunning, onClear }) => {
             style={{
               background: 'none',
               border: 'none',
-              color: '#7d8590',
+              color: 'var(--text-muted)',
               cursor: lines.length === 0 ? 'default' : 'pointer',
               padding: 4,
               borderRadius: 4,
@@ -121,8 +121,8 @@ const Terminal = ({ lines, isRunning, onClear }) => {
               opacity: lines.length === 0 ? 0.4 : 1,
               transition: 'color 0.15s',
             }}
-            onMouseEnter={(e) => { if (lines.length > 0) e.currentTarget.style.color = '#f85149'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.color = '#7d8590'; }}
+            onMouseEnter={(e) => { if (lines.length > 0) e.currentTarget.style.color = 'var(--accent-red-emphasis)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; }}
           >
             <Trash2 size={14} />
           </button>
@@ -143,7 +143,7 @@ const Terminal = ({ lines, isRunning, onClear }) => {
       >
         {lines.length === 0 ? (
           <div style={{
-            color: '#484f58',
+            color: 'var(--border-emphasis)',
             fontFamily: "'Inter', sans-serif",
             fontSize: 13,
             display: 'flex',

@@ -37,8 +37,8 @@ const GoalInput = ({ onStart, isRunning }) => {
     <div style={{ padding: '24px 20px' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-        <Sparkles size={18} color="#58a6ff" />
-        <span style={{ fontSize: 14, fontWeight: 600, color: '#c9d1d9' }}>
+        <Sparkles size={18} color="var(--accent-blue-subtle)" />
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
           What would you like to build?
         </span>
       </div>
@@ -54,10 +54,10 @@ const GoalInput = ({ onStart, isRunning }) => {
           rows={4}
           style={{
             width: '100%',
-            background: '#0d1117',
-            border: '1px solid #30363d',
+            background: 'var(--bg-default)',
+            border: '1px solid var(--border-default)',
             borderRadius: 8,
-            color: '#c9d1d9',
+            color: 'var(--text-primary)',
             padding: '12px 14px',
             fontSize: 13,
             fontFamily: "'Inter', sans-serif",
@@ -68,13 +68,13 @@ const GoalInput = ({ onStart, isRunning }) => {
             transition: 'border-color 0.15s',
             opacity: isRunning ? 0.5 : 1,
           }}
-          onFocus={(e) => { e.target.style.borderColor = '#58a6ff'; }}
-          onBlur={(e) => { e.target.style.borderColor = '#30363d'; }}
+          onFocus={(e) => { e.target.style.borderColor = 'var(--accent-blue-subtle)'; }}
+          onBlur={(e) => { e.target.style.borderColor = 'var(--border-default)'; }}
         />
         {/* Character count */}
         <span style={{
           position: 'absolute', bottom: 8, right: 12,
-          fontSize: 11, color: goal.length > MAX_CHARS * 0.9 ? '#f85149' : '#484f58',
+          fontSize: 11, color: goal.length > MAX_CHARS * 0.9 ? 'var(--accent-red-emphasis)' : 'var(--border-emphasis)',
           fontFamily: "'JetBrains Mono', monospace",
         }}>
           {goal.length}/{MAX_CHARS}
@@ -89,10 +89,10 @@ const GoalInput = ({ onStart, isRunning }) => {
             onClick={() => !isRunning && setGoal(example)}
             disabled={isRunning}
             style={{
-              background: '#161b22',
-              border: '1px solid #21262d',
+              background: 'var(--bg-subtle)',
+              border: '1px solid var(--bg-emphasis)',
               borderRadius: 16,
-              color: '#7d8590',
+              color: 'var(--text-muted)',
               fontSize: 11,
               padding: '4px 10px',
               cursor: isRunning ? 'not-allowed' : 'pointer',
@@ -101,13 +101,13 @@ const GoalInput = ({ onStart, isRunning }) => {
             }}
             onMouseEnter={(e) => {
               if (!isRunning) {
-                e.currentTarget.style.borderColor = '#58a6ff';
-                e.currentTarget.style.color = '#c9d1d9';
+                e.currentTarget.style.borderColor = 'var(--accent-blue-subtle)';
+                e.currentTarget.style.color = 'var(--text-primary)';
               }
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = '#21262d';
-              e.currentTarget.style.color = '#7d8590';
+              e.currentTarget.style.borderColor = 'var(--bg-emphasis)';
+              e.currentTarget.style.color = 'var(--text-muted)';
             }}
           >
             {example}
@@ -126,8 +126,8 @@ const GoalInput = ({ onStart, isRunning }) => {
           width: '100%',
           padding: '10px 16px',
           justifyContent: 'center',
-          background: goal.trim() && !isRunning ? 'linear-gradient(135deg, #238636, #2ea043)' : '#21262d',
-          color: goal.trim() && !isRunning ? '#ffffff' : '#484f58',
+          background: goal.trim() && !isRunning ? 'linear-gradient(135deg, var(--accent-green), var(--accent-green-emphasis))' : 'var(--bg-emphasis)',
+          color: goal.trim() && !isRunning ? '#ffffff' : 'var(--border-emphasis)',
           border: 'none',
           borderRadius: 8,
           cursor: !goal.trim() || isRunning ? 'not-allowed' : 'pointer',
@@ -139,12 +139,12 @@ const GoalInput = ({ onStart, isRunning }) => {
         }}
         onMouseEnter={(e) => {
           if (goal.trim() && !isRunning) {
-            e.currentTarget.style.background = 'linear-gradient(135deg, #2ea043, #3fb950)';
+            e.currentTarget.style.background = 'linear-gradient(135deg, var(--accent-green-emphasis), #3fb950)';
           }
         }}
         onMouseLeave={(e) => {
           if (goal.trim() && !isRunning) {
-            e.currentTarget.style.background = 'linear-gradient(135deg, #238636, #2ea043)';
+            e.currentTarget.style.background = 'linear-gradient(135deg, var(--accent-green), var(--accent-green-emphasis))';
           }
         }}
       >

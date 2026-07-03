@@ -41,7 +41,7 @@ app.use(helmet());
 // CORS — trust gateway or use permissive in dev
 const corsOrigins = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(',')
-  : ['http://localhost:5173', 'http://localhost:3000'];
+  : ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3010'];
 app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(express.json());
 

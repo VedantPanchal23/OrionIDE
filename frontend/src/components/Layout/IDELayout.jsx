@@ -1,8 +1,8 @@
 /**
  * Orion IDE — IDE Layout
  *
- * Main IDE: Activity bar, sidebar (file tree / agent / settings), editor, terminal.
- * Loads file tree on mount using projectId.
+ * Main IDE layout using custom flex resizers instead of percentage-based panel libraries.
+ * This guarantees the panels never stack or overlap, and maintains pixel-perfect boundaries.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -18,7 +18,6 @@ import SearchPanel from '../Search/SearchPanel';
 import CommandPalette from '../CommandPalette/CommandPalette';
 import useTerminal from '../../hooks/useTerminal';
 import useFileTree from '../../hooks/useFileTree';
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
 
 import { Files, Search, GitBranch, PlayCircle, Bot, Settings as SettingsIcon, ArrowLeft } from 'lucide-react';
 
@@ -131,12 +130,69 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
   const { lines, isRunning, clearTerminal, runCode, stopExecution } = useTerminal();
   const fileTree = useFileTree();
   const [activePanel, setActivePanel] = useState('files');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Custom panel sizes in pixels
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [terminalHeight, setTerminalHeight] = useState(220);
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const [isResizingTerminal, setIsResizingTerminal] = useState(false);
 
   // Load file tree on mount
   useEffect(() => {
     if (projectId) fileTree.loadTree(projectId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  // Sidebar drag handle
+  const handleSidebarMouseDown = (e) => {
+    e.preventDefault();
+    setIsResizingSidebar(true);
+  };
+
+  // Terminal drag handle
+  const handleTerminalMouseDown = (e) => {
+    e.preventDefault();
+    setIsResizingTerminal(true);
+  };
+
+  // Mouse move resize listener
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (isResizingSidebar) {
+        const newWidth = e.clientX - 48; // Substract activity bar (48px)
+        if (newWidth >= 240 && newWidth <= 500) {
+          setSidebarWidth(newWidth);
+        }
+      }
+      if (isResizingTerminal) {
+        const newHeight = window.innerHeight - e.clientY;
+        if (newHeight >= 120 && newHeight <= window.innerHeight - 200) {
+          setTerminalHeight(newHeight);
+        }
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingSidebar(false);
+      setIsResizingTerminal(false);
+    };
+
+    if (isResizingSidebar || isResizingTerminal) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = isResizingSidebar ? 'col-resize' : 'row-resize';
+      document.body.style.userSelect = 'none';
+    } else {
+      document.body.style.cursor = 'default';
+      document.body.style.userSelect = '';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizingSidebar, isResizingTerminal]);
 
   return (
     <div style={{
@@ -146,36 +202,66 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
       <CommandPalette
         tree={fileTree.tree}
         onRun={() => {
-          // Trigger run on the active file via RunButton's logic
           const activeFile = document.querySelector('[data-run-trigger]');
           if (activeFile) activeFile.click();
         }}
         onOpenSettings={() => setActivePanel('settings')}
         onNewTerminal={() => {
-          // Click the "+" terminal button
           const btn = document.querySelector('[data-new-terminal]');
           if (btn) btn.click();
         }}
       />
-      {/* Activity bar */}
+
+      {/* Activity Bar */}
       <aside style={{
         width: 48, background: 'var(--bg-canvas)', borderRight: '1px solid var(--border-default)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 8, gap: 4, flexShrink: 0,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 8, gap: 6, flexShrink: 0,
+        zIndex: 2,
       }}>
         {PANELS.map((p) => {
-          const isActive = p.id === activePanel;
+          const isActive = p.id === activePanel && !isSidebarCollapsed;
           return (
-            <button key={p.id} title={p.title} onClick={() => setActivePanel(p.id)} style={{
-              width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: isActive ? 'var(--bg-subtle)' : 'transparent', border: 'none', borderRadius: 8,
-              cursor: 'pointer', transition: 'background var(--transition-normal)', padding: 0,
-              borderLeft: isActive ? '2px solid var(--accent-blue)' : '2px solid transparent',
-            }}
-            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--bg-subtle)'; }}
-            onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
-            >
-              {p.icon ? <p.icon size={20} color={isActive ? 'var(--text-primary)' : 'var(--text-muted)'} /> : p.id === 'settings' ? <SettingsIcon size={20} color={isActive ? 'var(--text-primary)' : 'var(--text-muted)'} /> : <Bot size={20} color={isActive ? 'var(--text-primary)' : 'var(--text-muted)'} />}
-            </button>
+            <div key={p.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+              {/* Vertical neon active indicator */}
+              <div style={{
+                position: 'absolute', left: 0, width: 2, height: 20,
+                background: isActive ? 'var(--accent-blue-subtle)' : 'transparent',
+                borderRadius: '0 4px 4px 0',
+                boxShadow: isActive ? '0 0 10px var(--accent-blue-subtle)' : 'none',
+                transition: 'all var(--transition-normal)',
+              }} />
+
+              <button title={p.title} onClick={() => {
+                if (activePanel === p.id) {
+                  setIsSidebarCollapsed(!isSidebarCollapsed);
+                } else {
+                  setActivePanel(p.id);
+                  setIsSidebarCollapsed(false);
+                }
+              }} style={{
+                width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: isActive ? 'rgba(31, 111, 235, 0.08)' : 'transparent', border: 'none', borderRadius: 8,
+                cursor: 'pointer', transition: 'all var(--transition-normal)', padding: 0,
+                color: isActive ? 'var(--accent-blue-subtle)' : 'var(--text-muted)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.05)';
+                if (!isActive) {
+                  e.currentTarget.style.background = 'var(--bg-subtle)';
+                  e.currentTarget.style.color = 'var(--text-primary)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                if (!isActive) {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--text-muted)';
+                }
+              }}
+              >
+                {p.icon ? <p.icon size={18} /> : p.id === 'settings' ? <SettingsIcon size={18} /> : <Bot size={18} />}
+              </button>
+            </div>
           );
         })}
         <div style={{ flex: 1 }} />
@@ -184,77 +270,149 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
         </div>
       </aside>
 
-      {/* Resizable layout */}
-      <PanelGroup direction="horizontal" style={{ flex: 1 }}>
+      {/* Main Workspace Layout */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Sidebar Panel */}
-        <Panel
-          defaultSize={20}
-          minSize={15}
-          maxSize={40}
-          style={{
-            background: 'var(--bg-canvas)', borderRight: '1px solid var(--border-default)',
-            display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          }}
-        >
+        {!isSidebarCollapsed && (
           <div style={{
-            padding: '12px 16px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
-            letterSpacing: '0.5px', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-default)',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            width: sidebarWidth,
+            minWidth: 240,
+            maxWidth: 500,
+            background: 'var(--bg-canvas)',
+            borderRight: '1px solid var(--border-default)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            flexShrink: 0,
           }}>
-            <span>{activePanel === 'agent' ? 'AI Agent' : activePanel === 'files' ? projectName || 'Explorer' : PANELS.find(p => p.id === activePanel)?.title}</span>
+            {activePanel !== 'files' && (
+              <div style={{
+                padding: '12px 16px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
+                letterSpacing: '0.5px', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-default)',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <span>{activePanel === 'agent' ? 'AI Agent' : PANELS.find(p => p.id === activePanel)?.title}</span>
+              </div>
+            )}
+            <SidebarContent
+              panel={activePanel}
+              tree={fileTree.tree}
+              expandedFolders={fileTree.expandedFolders}
+              isLoading={fileTree.isLoading}
+              error={fileTree.error}
+              onToggleFolder={fileTree.expandFolder}
+              onCreateItem={fileTree.createItem}
+              onDeleteItem={fileTree.deleteItem}
+              onRenameItem={fileTree.renameItem}
+              onRefresh={fileTree.refreshTree}
+            />
           </div>
-          <SidebarContent
-            panel={activePanel}
-            tree={fileTree.tree}
-            expandedFolders={fileTree.expandedFolders}
-            isLoading={fileTree.isLoading}
-            error={fileTree.error}
-            onToggleFolder={fileTree.expandFolder}
-            onCreateItem={fileTree.createItem}
-            onDeleteItem={fileTree.deleteItem}
-            onRenameItem={fileTree.renameItem}
-            onRefresh={fileTree.refreshTree}
+        )}
+
+        {/* Sidebar Resizer Handle */}
+        {!isSidebarCollapsed && (
+          <div
+            onMouseDown={handleSidebarMouseDown}
+            style={{
+              width: 4,
+              cursor: 'col-resize',
+              background: isResizingSidebar ? 'var(--accent-blue)' : 'transparent',
+              transition: 'background 0.2s',
+              zIndex: 10,
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-blue)'; }}
+            onMouseLeave={(e) => { if (!isResizingSidebar) e.currentTarget.style.background = 'transparent'; }}
           />
-        </Panel>
+        )}
 
-        {/* Vertical Resize Handle */}
-        <PanelResizeHandle style={{ width: 4, background: 'transparent', cursor: 'col-resize', transition: 'background 0.2s' }} 
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-blue)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-        />
-
-        {/* Main Editor/Terminal Area */}
-        <Panel style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Main Editor & Terminal Container */}
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
           {/* Topbar */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '6px 16px', background: 'var(--bg-canvas)', borderBottom: '1px solid var(--border-default)', flexShrink: 0,
+            height: 38,
           }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '-0.3px' }}>Orion IDE</div>
-            <RunButton onRun={runCode} onStop={stopExecution} isRunning={isRunning} />
-          </div>
-          
-          <PanelGroup direction="vertical">
-            {/* Editor Panel */}
-            <Panel defaultSize={70} minSize={30}>
-              <div style={{ height: '100%', overflow: 'hidden' }}>
-                <EditorPane />
+            {/* Logo brand */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{
+                width: 6, height: 6, borderRadius: '50%',
+                background: 'var(--accent-blue)', boxShadow: '0 0 8px var(--accent-blue)',
+              }} />
+              <div style={{
+                fontSize: 12, fontWeight: 700,
+                background: 'linear-gradient(135deg, var(--text-primary) 30%, var(--accent-blue-subtle) 100%)',
+                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+                letterSpacing: '-0.3px',
+              }}>
+                Orion IDE
               </div>
-            </Panel>
+            </div>
 
-            {/* Horizontal Resize Handle */}
-            <PanelResizeHandle style={{ height: 4, background: 'transparent', cursor: 'row-resize', transition: 'background 0.2s', borderTop: '1px solid var(--border-default)' }} 
+            {/* Center Command Pill button */}
+            <button
+              onClick={() => {
+                const event = new KeyboardEvent('keydown', { key: 'p', ctrlKey: true });
+                window.dispatchEvent(event);
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                padding: '4px 16px', background: 'var(--bg-subtle)',
+                border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)',
+                color: 'var(--text-muted)', fontSize: 11, fontFamily: 'var(--font-ui)',
+                cursor: 'pointer', transition: 'all var(--transition-normal)',
+                width: '100%', maxWidth: 360,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = 'var(--border-emphasis)';
+                e.currentTarget.style.background = 'var(--bg-emphasis)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = 'var(--border-default)';
+                e.currentTarget.style.background = 'var(--bg-subtle)';
+              }}
+            >
+              <Search size={10} style={{ opacity: 0.6 }} />
+              <span>Search files, commands... (Ctrl+P)</span>
+            </button>
+
+            {/* Right actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <RunButton onRun={runCode} onStop={stopExecution} isRunning={isRunning} />
+            </div>
+          </div>
+
+          {/* Editor and Terminal Stack */}
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+            {/* Editor Area */}
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <EditorPane />
+            </div>
+
+            {/* Horizontal Resizer Handle */}
+            <div
+              onMouseDown={handleTerminalMouseDown}
+              style={{
+                height: 4,
+                cursor: 'row-resize',
+                background: isResizingTerminal ? 'var(--accent-blue)' : 'transparent',
+                borderTop: '1px solid var(--border-default)',
+                transition: 'background 0.2s',
+                zIndex: 10,
+                flexShrink: 0,
+              }}
               onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-blue)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+              onMouseLeave={(e) => { if (!isResizingTerminal) e.currentTarget.style.background = 'transparent'; }}
             />
 
-            {/* Terminal Panel */}
-            <Panel defaultSize={30} minSize={15}>
-              <TerminalPanel lines={lines} isRunning={isRunning} onClear={clearTerminal} />
-            </Panel>
-          </PanelGroup>
-        </Panel>
-      </PanelGroup>
+            {/* Terminal Area */}
+            <div style={{ height: terminalHeight, minHeight: 120, overflow: 'hidden', flexShrink: 0 }}>
+              <TerminalPanel lines={lines} isRunning={isRunning} onClear={clearTerminal} projectId={projectId} />
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

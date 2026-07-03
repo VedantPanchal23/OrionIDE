@@ -26,6 +26,7 @@ const PUBLIC_ROUTES = [
   { method: 'POST', path: '/api/auth/refresh' },
   { method: 'POST', path: '/api/auth/logout' },
   { method: 'GET', path: '/api/auth/validate' },
+  { method: 'GET', path: '/api/auth/dev-login' },
   { method: 'GET', path: '/health' },
 ];
 
@@ -35,9 +36,6 @@ const PUBLIC_ROUTES = [
  * @returns {boolean}
  */
 const isPublicRoute = (req) => {
-  // Non-API paths (favicon, static assets, etc.) bypass auth entirely
-  if (!req.path.startsWith('/api/')) return true;
-
   return PUBLIC_ROUTES.some((route) => {
     const methodMatch = route.method === req.method;
     // Support prefix matching for OAuth redirects with query params

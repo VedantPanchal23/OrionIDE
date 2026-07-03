@@ -39,8 +39,8 @@ const LanguageRuntimes = () => {
         marginBottom: 16,
       }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: '#c9d1d9' }}>Language Runtimes</div>
-          <div style={{ fontSize: 12, color: '#7d8590', marginTop: 2 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>Language Runtimes</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
             {languages.length} programming languages supported
           </div>
         </div>
@@ -49,8 +49,8 @@ const LanguageRuntimes = () => {
           disabled={loading}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            padding: '6px 12px', background: '#21262d', color: '#c9d1d9',
-            border: '1px solid #30363d', borderRadius: 6, cursor: 'pointer',
+            padding: '6px 12px', background: 'var(--bg-emphasis)', color: 'var(--text-primary)',
+            border: '1px solid var(--border-default)', borderRadius: 6, cursor: 'pointer',
             fontSize: 12, fontWeight: 500,
           }}
         >
@@ -62,8 +62,8 @@ const LanguageRuntimes = () => {
       {/* Info box */}
       <div style={{
         padding: '10px 14px', marginBottom: 16,
-        background: '#0d1117', border: '1px solid #21262d', borderRadius: 8,
-        fontSize: 12, color: '#8b949e', lineHeight: '1.5',
+        background: 'var(--bg-default)', border: '1px solid var(--bg-emphasis)', borderRadius: 8,
+        fontSize: 12, color: 'var(--text-secondary)', lineHeight: '1.5',
       }}>
         All runtimes run in a secure sandboxed container on the server. Each execution is isolated with a 30-second timeout.
       </div>
@@ -81,8 +81,8 @@ const LanguageRuntimes = () => {
               key={lang.id}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '10px 14px', background: '#0d1117',
-                border: '1px solid #21262d', borderRadius: 8,
+                padding: '10px 14px', background: 'var(--bg-default)',
+                border: '1px solid var(--bg-emphasis)', borderRadius: 8,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -91,21 +91,21 @@ const LanguageRuntimes = () => {
                   background: lang.color, flexShrink: 0,
                 }} />
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#c9d1d9' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
                     {lang.icon} {lang.displayName}
                   </div>
-                  <div style={{ fontSize: 10, color: '#484f58', fontFamily: "'JetBrains Mono', monospace" }}>
+                  <div style={{ fontSize: 10, color: 'var(--border-emphasis)', fontFamily: "'JetBrains Mono', monospace" }}>
                     {lang.extensions.join(', ')}
                   </div>
                 </div>
               </div>
               <div>
                 {!statusKnown ? (
-                  <span style={{ fontSize: 11, color: '#484f58' }}>--</span>
+                  <span style={{ fontSize: 11, color: 'var(--border-emphasis)' }}>--</span>
                 ) : available ? (
                   <CheckCircle2 size={14} color="#3fb950" />
                 ) : (
-                  <AlertTriangle size={14} color="#f85149" />
+                  <AlertTriangle size={14} color="var(--accent-red-emphasis)" />
                 )}
               </div>
             </div>

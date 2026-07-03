@@ -1,0 +1,23 @@
+[
+  {
+    "id": "mock-root-folder",
+    "name": "OrionIDE",
+    "mimeType": "application/vnd.google-apps.folder",
+    "parents": [
+      "root"
+    ],
+    "modifiedTime": "2026-07-02T10:31:27.518Z",
+    "trashed": false
+  },
+  {
+    "id": "mock-file-1782989462244-twbasfk5v",
+    "name": "test",
+    "mimeType": "application/vnd.google-apps.folder",
+    "parents": [
+      "mock-root-folder"
+    ],
+    "modifiedTime": "2026-07-02T10:51:02.244Z",
+    "trashed": false,
+    "size": 0
+  }
+]

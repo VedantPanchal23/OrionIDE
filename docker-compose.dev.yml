@@ -90,6 +90,7 @@ services:
     volumes:
       - ./services/drive-service/src:/app/src
       - ./shared:/shared
+      - ./workspace:/app/src/mock-workspace
     command: npx nodemon src/app.js
     depends_on:
       redis:
@@ -209,7 +210,7 @@ services:
     volumes:
       - ./services/terminal-service/src:/app/src
       - ./shared:/shared
-      - terminal-workspaces:/workspace
+      - ./workspace:/workspace
     command: npx nodemon src/app.js
     networks:
       - orion-network
@@ -220,7 +221,6 @@ services:
     container_name: orion-piston-dev
     restart: unless-stopped
     privileged: true
-    cgroup: host
     ports:
       - "2000:2000"
     tmpfs:
@@ -229,9 +229,9 @@ services:
       - OUTPUT_MAX_SIZE=65536
       - MAX_PROCESS_COUNT=64
       - RUN_TIMEOUT=15000
-      - PISTON_DISABLE_NETWORKING=true
     volumes:
       - piston-packages:/piston/packages
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
     networks:
       - orion-network
 

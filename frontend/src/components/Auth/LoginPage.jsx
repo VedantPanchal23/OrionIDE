@@ -184,6 +184,35 @@ const LoginPage = () => {
             <ArrowRight size={16} style={{ marginLeft: 'auto', opacity: hovering ? 1 : 0.5, transition: 'opacity 0.2s' }} />
           </button>
 
+          {/* Developer Mock Login Bypass Button */}
+          <button
+            onClick={() => window.location.href = '/api/auth/dev-login'}
+            style={{
+              width: '100%', padding: '12px 24px', fontSize: 'var(--font-size-sm)',
+              fontWeight: 600, color: 'var(--text-secondary)',
+              background: 'transparent',
+              border: '1px dashed var(--border-default)',
+              borderRadius: 'var(--radius-md)', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              marginTop: 16,
+              transition: 'all 0.2s ease',
+              fontFamily: 'var(--font-ui)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'var(--accent-green)';
+              e.currentTarget.style.color = 'var(--text-primary)';
+              e.currentTarget.style.background = 'rgba(63,185,80,0.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'var(--border-default)';
+              e.currentTarget.style.color = 'var(--text-secondary)';
+              e.currentTarget.style.background = 'transparent';
+            }}
+          >
+            <Shield size={14} color="var(--accent-green)" />
+            Developer Login (Offline Mode)
+          </button>
+
           <div style={{
             marginTop: 24, padding: '16px 0', borderTop: '1px solid var(--border-default)',
           }}>

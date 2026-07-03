@@ -57,7 +57,7 @@ app.use(helmet());
 // ──────────────────────────────────────────────────────────────────────────
 // 2. CORS — shared config with exact origins (no wildcard)
 // ──────────────────────────────────────────────────────────────────────────
-const corsConfig = require('../../../../shared/utils/corsConfig');
+const corsConfig = require('../../../shared/utils/corsConfig');
 app.use(cors(corsConfig));
 app.options('*', cors(corsConfig));
 

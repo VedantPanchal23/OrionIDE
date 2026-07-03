@@ -227,3 +227,18 @@ kbd {
 .tree-node:hover > .tree-actions {
   opacity: 1 !important;
 }
+
+/* ── Premium Editor Tab Styling ────────────────────────────────── */
+.tab-container {
+  position: relative;
+}
+.tab-close-btn {
+  opacity: 0 !important;
+  transition: opacity var(--transition-fast) !important;
+}
+.tab-container:hover .tab-close-btn {
+  opacity: 0.8 !important;
+}
+.tab-container.active .tab-close-btn {
+  opacity: 0.8 !important;
+}

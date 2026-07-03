@@ -67,7 +67,7 @@ const ContextMenu = ({ x, y, options, onClose }) => {
 
 /* ── Tree Node ────────────────────────────────────────────────────────── */
 
-const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, onCreateItem, onDelete, onRename }) => {
+const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, onCreateItem, onDelete, onRename, activeFileId }) => {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(node.name);
   const [contextMenu, setContextMenu] = useState(null);
@@ -75,6 +75,7 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
 
   const isExpanded = expandedFolders.has(node.id);
   const langInfo = !node.isFolder ? getLanguageFromFileName(node.name) : null;
+  const isActiveFile = activeFileId === node.id;
 
   useEffect(() => {
     if (isRenaming && inputRef.current) {
@@ -125,13 +126,27 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
         onContextMenu={handleContextMenu}
         style={{
           display: 'flex', alignItems: 'center', gap: 4,
-          padding: '3px 8px', paddingLeft: 8 + depth * 16,
-          cursor: 'pointer', fontSize: 13,
-          color: '#c9d1d9', transition: 'background 0.1s',
-          userSelect: 'none',
+          padding: '4px 8px', paddingLeft: 8 + depth * 16,
+          cursor: 'pointer', fontSize: 'var(--font-size-md)',
+          color: isActiveFile ? 'var(--text-primary)' : 'var(--text-secondary)',
+          background: isActiveFile ? 'rgba(31, 111, 235, 0.08)' : 'transparent',
+          borderLeft: isActiveFile ? '2px solid var(--accent-blue-subtle)' : '2px solid transparent',
+          transition: 'all var(--transition-fast)',
+          userSelect: 'none', borderRadius: 'var(--radius-sm)',
+          margin: '1px 4px',
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = '#161b22'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+        onMouseEnter={(e) => {
+          if (!isActiveFile) {
+            e.currentTarget.style.background = 'var(--bg-subtle)';
+            e.currentTarget.style.color = 'var(--text-primary)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isActiveFile) {
+            e.currentTarget.style.background = 'transparent';
+            e.currentTarget.style.color = 'var(--text-secondary)';
+          }
+        }}
       >
         {/* Chevron for folders */}
         <span style={{ width: 14, flexShrink: 0, display: 'flex', alignItems: 'center', opacity: node.isFolder ? 1 : 0 }}>
@@ -141,8 +156,8 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
         {/* Icon */}
         <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
           {node.isFolder
-            ? (isExpanded ? <FolderOpen size={14} color="#58a6ff" /> : <Folder size={14} color="#7d8590" />)
-            : <FileCode2 size={14} color={langInfo?.color || '#7d8590'} />
+            ? (isExpanded ? <FolderOpen size={14} color="var(--accent-blue-subtle)" /> : <Folder size={14} color="var(--text-muted)" />)
+            : <FileCode2 size={14} color={langInfo?.color || 'var(--text-muted)'} />
           }
         </span>
 
@@ -159,9 +174,9 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
             }}
             onClick={(e) => e.stopPropagation()}
             style={{
-              flex: 1, background: '#0d1117', border: '1px solid #58a6ff',
-              color: '#c9d1d9', borderRadius: 3, padding: '1px 4px',
-              fontSize: 13, fontFamily: "'Inter', sans-serif", outline: 'none',
+              flex: 1, background: 'var(--bg-default)', border: '1px solid var(--border-active)',
+              color: 'var(--text-primary)', borderRadius: 'var(--radius-sm)', padding: '1px 6px',
+              fontSize: 'var(--font-size-md)', fontFamily: 'var(--font-ui)', outline: 'none',
             }}
           />
         ) : (
@@ -211,6 +226,7 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
               onCreateItem={onCreateItem}
               onDelete={onDelete}
               onRename={onRename}
+              activeFileId={activeFileId}
             />
           ))}
         </>
@@ -228,16 +244,41 @@ const LoadingSkeleton = ({ depth }) => (
         display: 'flex', alignItems: 'center', gap: 6,
         padding: '4px 8px', paddingLeft: 8 + (depth || 0) * 16,
       }}>
-        <div style={{ width: 14 + Math.random() * 80, height: 10, background: '#21262d', borderRadius: 4, animation: 'pulse 1.5s infinite' }} />
+        <div style={{ width: 14 + Math.random() * 80, height: 10, background: 'var(--bg-emphasis)', borderRadius: 4, animation: 'pulse 1.5s infinite' }} />
       </div>
     ))}
   </>
 );
 
+const ActionButton = ({ title, onClick, children }) => {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      title={title}
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        background: hover ? 'var(--bg-emphasis)' : 'transparent',
+        border: 'none',
+        color: hover ? 'var(--text-primary)' : 'var(--text-muted)',
+        cursor: 'pointer',
+        padding: 4,
+        borderRadius: 4,
+        display: 'flex',
+        alignItems: 'center',
+        transition: 'all var(--transition-fast)',
+      }}
+    >
+      {children}
+    </button>
+  );
+};
+
 /* ── FileTree Main ────────────────────────────────────────────────────── */
 
 const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onCreateItem, onDeleteItem, onRenameItem, onRefresh }) => {
-  const { openFile } = useEditor();
+  const { openFile, activeFileId } = useEditor();
   const [newFileDialog, setNewFileDialog] = useState({ open: false, parentId: null, type: 'file' });
 
   const handleClickFile = useCallback((fileId, fileName) => {
@@ -278,12 +319,12 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
   if (error) {
     return (
       <div style={{
-        padding: 16, fontSize: 13, color: '#f85149',
+        padding: 16, fontSize: 13, color: 'var(--accent-red-emphasis)',
         fontFamily: "'Inter', sans-serif", textAlign: 'center',
       }}>
         <div style={{ marginBottom: 8 }}>{error}</div>
         <button onClick={onRefresh} style={{
-          background: 'none', border: '1px solid #30363d', color: '#7d8590',
+          background: 'none', border: '1px solid var(--border-default)', color: 'var(--text-muted)',
           padding: '4px 12px', borderRadius: 4, cursor: 'pointer', fontSize: 12,
         }}>
           Retry
@@ -296,11 +337,11 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
     return (
       <div style={{
         flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 16, fontSize: 13, color: '#484f58',
+        padding: 16, fontSize: 13, color: 'var(--border-emphasis)',
         fontFamily: "'Inter', sans-serif", textAlign: 'center',
       }}>
         <div>
-          <Folder size={32} color="#484f58" style={{ margin: '0 auto 12px', display: 'block' }} />
+          <Folder size={32} color="var(--border-emphasis)" style={{ margin: '0 auto 12px', display: 'block' }} />
           <div>No project open</div>
         </div>
       </div>
@@ -308,25 +349,26 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
   }
 
   return (
-    <div style={{ overflow: 'auto', flex: 1 }}>
+    <div style={{ overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column' }}>
       {/* Header with actions */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '4px 8px', position: 'sticky', top: 0, background: '#010409', zIndex: 1,
+        padding: '12px 16px', position: 'sticky', top: 0, background: 'var(--bg-canvas)', zIndex: 1,
+        borderBottom: '1px solid var(--border-default)',
       }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: '#7d8590', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           {tree.name}
         </span>
-        <div style={{ display: 'flex', gap: 2 }}>
-          <button title="New File" onClick={() => handleCreateItem(tree.id, 'file')} style={actionBtnStyle}>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <ActionButton title="New File" onClick={() => handleCreateItem(tree.id, 'file')}>
             <FilePlus size={14} />
-          </button>
-          <button title="New Folder" onClick={() => handleCreateItem(tree.id, 'folder')} style={actionBtnStyle}>
+          </ActionButton>
+          <ActionButton title="New Folder" onClick={() => handleCreateItem(tree.id, 'folder')}>
             <FolderPlus size={14} />
-          </button>
-          <button title="Refresh" onClick={onRefresh} style={actionBtnStyle}>
+          </ActionButton>
+          <ActionButton title="Refresh" onClick={onRefresh}>
             <RefreshCw size={14} />
-          </button>
+          </ActionButton>
         </div>
       </div>
 
@@ -342,11 +384,12 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
           onCreateItem={handleCreateItem}
           onDelete={handleDelete}
           onRename={onRenameItem}
+          activeFileId={activeFileId}
         />
       ))}
 
       {tree.children?.length === 0 && (
-        <div style={{ padding: '16px 8px', fontSize: 13, color: '#484f58', textAlign: 'center' }}>
+        <div style={{ padding: '16px 8px', fontSize: 13, color: 'var(--border-emphasis)', textAlign: 'center' }}>
           Empty folder
         </div>
       )}
@@ -362,7 +405,7 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
 };
 
 const actionBtnStyle = {
-  background: 'none', border: 'none', color: '#7d8590', cursor: 'pointer',
+  background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
   padding: 4, borderRadius: 4, display: 'flex', alignItems: 'center',
 };
 

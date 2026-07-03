@@ -54,19 +54,19 @@ const NewFileDialog = ({ isOpen, onClose, onCreate }) => {
       {/* Dialog */}
       <div style={{
         position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-        width: 420, background: '#161b22', border: '1px solid #30363d', borderRadius: 12,
+        width: 420, background: 'var(--bg-subtle)', border: '1px solid var(--border-default)', borderRadius: 12,
         boxShadow: '0 16px 48px rgba(0,0,0,0.6)', zIndex: 1001, overflow: 'hidden',
       }}>
         {/* Header */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 18px', borderBottom: '1px solid #21262d',
+          padding: '14px 18px', borderBottom: '1px solid var(--bg-emphasis)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <FilePlus size={16} />
-            <span style={{ fontSize: 14, fontWeight: 600, color: '#c9d1d9' }}>New File</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>New File</span>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#7d8590', cursor: 'pointer', padding: 4 }}>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4 }}>
             <X size={14} />
           </button>
         </div>
@@ -74,7 +74,7 @@ const NewFileDialog = ({ isOpen, onClose, onCreate }) => {
         {/* Body */}
         <div style={{ padding: '16px 18px' }}>
           {/* File name input */}
-          <label style={{ fontSize: 12, fontWeight: 600, color: '#7d8590', display: 'block', marginBottom: 6 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
             File Name
           </label>
           <div style={{ position: 'relative', marginBottom: 12 }}>
@@ -86,13 +86,13 @@ const NewFileDialog = ({ isOpen, onClose, onCreate }) => {
               autoFocus
               style={{
                 width: '100%', padding: '10px 14px', paddingRight: 100,
-                background: '#0d1117', border: '1px solid #30363d', borderRadius: 8,
-                color: '#c9d1d9', fontSize: 13, fontFamily: "'JetBrains Mono', monospace",
+                background: 'var(--bg-default)', border: '1px solid var(--border-default)', borderRadius: 8,
+                color: 'var(--text-primary)', fontSize: 13, fontFamily: "'JetBrains Mono', monospace",
                 outline: 'none', boxSizing: 'border-box',
                 transition: 'border-color 0.15s',
               }}
-              onFocus={(e) => { e.target.style.borderColor = '#58a6ff'; }}
-              onBlur={(e) => { e.target.style.borderColor = '#30363d'; }}
+              onFocus={(e) => { e.target.style.borderColor = 'var(--accent-blue-subtle)'; }}
+              onBlur={(e) => { e.target.style.borderColor = 'var(--border-default)'; }}
             />
             {/* Language badge */}
             {fileName.includes('.') && (
@@ -100,7 +100,7 @@ const NewFileDialog = ({ isOpen, onClose, onCreate }) => {
                 position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
                 display: 'flex', alignItems: 'center', gap: 4,
                 padding: '3px 8px', borderRadius: 6,
-                background: '#21262d', fontSize: 11, color: '#c9d1d9',
+                background: 'var(--bg-emphasis)', fontSize: 11, color: 'var(--text-primary)',
                 border: `1px solid ${detectedLang.color}44`,
               }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: detectedLang.color }} />
@@ -110,7 +110,7 @@ const NewFileDialog = ({ isOpen, onClose, onCreate }) => {
           </div>
 
           {/* Language selector */}
-          <label style={{ fontSize: 12, fontWeight: 600, color: '#7d8590', display: 'block', marginBottom: 6 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
             Or select a language
           </label>
           <div style={{
@@ -124,13 +124,13 @@ const NewFileDialog = ({ isOpen, onClose, onCreate }) => {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 6,
                   padding: '6px 8px', borderRadius: 6,
-                  background: selectedLanguageId === lang.id ? '#21262d' : 'transparent',
+                  background: selectedLanguageId === lang.id ? 'var(--bg-emphasis)' : 'transparent',
                   border: selectedLanguageId === lang.id ? `1px solid ${lang.color}66` : '1px solid transparent',
-                  color: '#c9d1d9', cursor: 'pointer', fontSize: 11,
+                  color: 'var(--text-primary)', cursor: 'pointer', fontSize: 11,
                   fontFamily: "'Inter', sans-serif",
                   transition: 'all 0.1s',
                 }}
-                onMouseEnter={(e) => { if (selectedLanguageId !== lang.id) e.currentTarget.style.background = '#161b22'; }}
+                onMouseEnter={(e) => { if (selectedLanguageId !== lang.id) e.currentTarget.style.background = 'var(--bg-subtle)'; }}
                 onMouseLeave={(e) => { if (selectedLanguageId !== lang.id) e.currentTarget.style.background = 'transparent'; }}
               >
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: lang.color, flexShrink: 0 }} />
@@ -142,18 +142,18 @@ const NewFileDialog = ({ isOpen, onClose, onCreate }) => {
 
         {/* Footer */}
         <div style={{
-          padding: '12px 18px', borderTop: '1px solid #21262d',
+          padding: '12px 18px', borderTop: '1px solid var(--bg-emphasis)',
           display: 'flex', justifyContent: 'flex-end', gap: 8,
         }}>
           <button onClick={onClose} style={{
-            padding: '8px 16px', background: '#21262d', color: '#c9d1d9',
-            border: '1px solid #30363d', borderRadius: 6, cursor: 'pointer',
+            padding: '8px 16px', background: 'var(--bg-emphasis)', color: 'var(--text-primary)',
+            border: '1px solid var(--border-default)', borderRadius: 6, cursor: 'pointer',
             fontSize: 12, fontWeight: 600, fontFamily: "'Inter', sans-serif",
           }}>Cancel</button>
           <button onClick={handleCreate} disabled={!fileName.trim()} style={{
             padding: '8px 16px',
-            background: fileName.trim() ? '#238636' : '#21262d',
-            color: fileName.trim() ? '#fff' : '#484f58',
+            background: fileName.trim() ? 'var(--accent-green)' : 'var(--bg-emphasis)',
+            color: fileName.trim() ? '#fff' : 'var(--border-emphasis)',
             border: 'none', borderRadius: 6,
             cursor: fileName.trim() ? 'pointer' : 'not-allowed',
             fontSize: 12, fontWeight: 600, fontFamily: "'Inter', sans-serif",

@@ -30,7 +30,7 @@ const LANGUAGES = Object.freeze([
   },
   {
     id: 'javascript', displayName: 'JavaScript', extensions: ['.js'],
-    monacoLanguage: 'javascript', pistonLanguage: 'node',
+    monacoLanguage: 'javascript', pistonLanguage: 'javascript',
     pistonVersion: '18.15.0',
     runCommand: 'node {file}', compileCommand: null,
     icon: '\u{1F7E8}', color: '#F7DF1E',
@@ -54,7 +54,7 @@ const LANGUAGES = Object.freeze([
   },
   {
     id: 'c', displayName: 'C', extensions: ['.c'],
-    monacoLanguage: 'c', pistonLanguage: 'gcc',
+    monacoLanguage: 'c', pistonLanguage: 'c',
     pistonVersion: '10.2.0',
     runCommand: './main', compileCommand: 'gcc {file} -o main',
     icon: '\u2699\uFE0F', color: '#555555',
@@ -62,7 +62,7 @@ const LANGUAGES = Object.freeze([
   },
   {
     id: 'cpp', displayName: 'C++', extensions: ['.cpp', '.cc', '.cxx'],
-    monacoLanguage: 'cpp', pistonLanguage: 'gcc',
+    monacoLanguage: 'cpp', pistonLanguage: 'c++',
     pistonVersion: '10.2.0',
     runCommand: './main', compileCommand: 'g++ {file} -o main',
     icon: '\u26A1', color: '#F34B7D',
@@ -70,7 +70,7 @@ const LANGUAGES = Object.freeze([
   },
   {
     id: 'csharp', displayName: 'C#', extensions: ['.cs'],
-    monacoLanguage: 'csharp', pistonLanguage: 'dotnet',
+    monacoLanguage: 'csharp', pistonLanguage: 'csharp',
     pistonVersion: '5.0.201',
     runCommand: 'dotnet-script {file}', compileCommand: null,
     icon: '\u{1F7E3}', color: '#178600',
