@@ -30,8 +30,6 @@ const buildPistonRequest = (languageId, fileName, code, stdin) => {
     version: lang.pistonVersion || '*',
     files: [{ name: fileName, content: code }],
     stdin: stdin || '',
-    run_timeout: 30000,
-    compile_timeout: 30000,
   };
 };
 

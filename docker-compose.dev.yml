@@ -229,9 +229,9 @@ services:
       - OUTPUT_MAX_SIZE=65536
       - MAX_PROCESS_COUNT=64
       - RUN_TIMEOUT=15000
+      - COMPILE_TIMEOUT=15000
     volumes:
       - piston-packages:/piston/packages
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
     networks:
       - orion-network
 
