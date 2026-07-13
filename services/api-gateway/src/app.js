@@ -162,9 +162,24 @@ if (process.env.NODE_ENV !== 'test') {
     });
   });
 
-  // Handle WebSocket upgrades for editor-service proxy
+  // Handle WebSocket upgrades — forward to the correct service proxy
+  const { terminalProxy } = require('./routes/terminal');
+  const { editorProxy } = require('./routes/editor');
+
   server.on('upgrade', (req, socket, head) => {
     logger.info('WebSocket upgrade request', { url: req.url });
+
+    if (req.url.startsWith('/api/terminal')) {
+      // Strip the mount prefix — Express doesn't do this during upgrade
+      req.url = req.url.replace('/api/terminal', '') || '/';
+      terminalProxy.upgrade(req, socket, head);
+    } else if (req.url.startsWith('/api/editor')) {
+      req.url = req.url.replace('/api/editor', '') || '/';
+      editorProxy.upgrade(req, socket, head);
+    } else {
+      logger.warn('Unknown WebSocket upgrade path', { url: req.url });
+      socket.destroy();
+    }
   });
 }
 

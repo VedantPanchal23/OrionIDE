@@ -16,11 +16,12 @@ const { createMockDriveClient } = require('./mockDrive');
  * @returns {import('googleapis').drive_v3.Drive} Drive API client
  */
 const createDriveClient = (googleAccessToken) => {
-  if (!googleAccessToken) {
-    throw new Error('Google access token is required to create Drive client');
-  }
-
-  if (googleAccessToken === 'mock-token') {
+  // In development mode, auto-default to mock drive if no token provided
+  const isDev = process.env.NODE_ENV !== 'production';
+  if (!googleAccessToken || googleAccessToken === 'mock-token' || googleAccessToken === 'dev-token') {
+    if (!isDev && !googleAccessToken) {
+      throw new Error('Google access token is required to create Drive client');
+    }
     return createMockDriveClient();
   }
 

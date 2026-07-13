@@ -29,18 +29,16 @@ const router = express.Router();
 
 // ── Middleware: extract Google access token and user info ─────────────────
 const extractUserContext = (req, res, next) => {
-  // The API Gateway decodes the JWT and includes the googleAccessToken in
-  // the user payload, which gets forwarded as a header.
-  // In the JWT payload: { userId, email, googleAccessToken, ... }
-  // The gateway sets: X-User-Id, X-User-Email
-  // The googleAccessToken is in the Authorization header forwarded from the JWT
-  
   req.userId = req.headers['x-user-id'];
   req.userEmail = req.headers['x-user-email'];
-
-  // googleAccessToken comes from the request body for ensure-root (auth-service calls directly)
-  // or from a custom header for authenticated requests
   req.googleAccessToken = req.headers['x-google-access-token'] || req.body?.googleAccessToken;
+
+  // In development mode, auto-provide defaults when no auth headers present
+  const isDev = process.env.NODE_ENV !== 'production';
+  if (isDev) {
+    if (!req.userId) req.userId = 'dev-user-123';
+    if (!req.googleAccessToken) req.googleAccessToken = 'dev-token';
+  }
 
   if (!req.userId && !req.googleAccessToken) {
     return res.status(401).json({
@@ -59,11 +57,10 @@ router.use(extractUserContext);
 
 // ── Helper: create Drive client from request context ──────────────────────
 const getDriveFromReq = (req) => {
-  if (!req.googleAccessToken) {
-    throw new Error('Google access token not available');
-  }
-  return createDriveClient(req.googleAccessToken);
+  // createDriveClient handles dev-token → mock automatically
+  return createDriveClient(req.googleAccessToken || null);
 };
+
 
 // ── Helper: standard success response ────────────────────────────────────
 const success = (res, data, statusCode = 200) => {
@@ -163,62 +160,48 @@ router.post('/files', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// GET /drive/files/:id — Read file content
+// Helper: extract file ID from wildcard params (supports IDs with slashes)
 // ─────────────────────────────────────────────────────────────────────────
-router.get('/files/:id', async (req, res) => {
+const extractFileId = (req) => {
+  // req.params[0] captures everything after /files/
+  return req.params[0] || req.params.id;
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// GET /drive/files/* — Read file content
+// Uses wildcard to support file IDs containing slashes (mock drive paths)
+// ─────────────────────────────────────────────────────────────────────────
+router.get('/files/*', async (req, res) => {
   try {
+    const fileId = extractFileId(req);
     const driveClient = getDriveFromReq(req);
-    const content = await readFile(driveClient, req.params.id);
-    const metadata = await getMetadata(driveClient, req.params.id);
+    const content = await readFile(driveClient, fileId);
+    const metadata = await getMetadata(driveClient, fileId);
     success(res, { content, metadata });
   } catch (err) {
     if (err.code === 404) {
       return error(res, 'DRIVE_FILE_NOT_FOUND', 'File not found', 404);
     }
-    logger.error('read file failed', { fileId: req.params.id, error: err.message });
+    logger.error('read file failed', { fileId: extractFileId(req), error: err.message });
     error(res, 'DRIVE_READ_ERROR', 'Failed to read file', 500, err.message);
   }
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// PUT /drive/files/:id — Update file content (add to write buffer)
+// PUT /drive/files/*/flush — Immediate write to Drive (Ctrl+S)
 // Body: { content }
-// Does NOT write to Drive immediately — buffers in Redis for 60s batch flush.
+// NOTE: Must be registered BEFORE the generic PUT /files/* route
 // ─────────────────────────────────────────────────────────────────────────
-router.put('/files/:id', async (req, res) => {
+router.put(/^\/files\/(.+)\/flush$/, async (req, res) => {
   try {
+    const fileId = req.params[0];
     const { content } = req.body;
 
     if (content === undefined || content === null) {
       return error(res, 'DRIVE_MISSING_PARAM', 'content is required', 400);
     }
 
-    await addToBuffer(req.userId, req.params.id, content, req.googleAccessToken);
-
-    success(res, {
-      fileId: req.params.id,
-      buffered: true,
-      message: 'Content buffered — will be written to Drive within 60 seconds',
-    });
-  } catch (err) {
-    logger.error('buffer write failed', { fileId: req.params.id, error: err.message });
-    error(res, 'DRIVE_BUFFER_ERROR', 'Failed to buffer content', 500, err.message);
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────────
-// PUT /drive/files/:id/flush — Immediate write to Drive (Ctrl+S)
-// Body: { content }
-// ─────────────────────────────────────────────────────────────────────────
-router.put('/files/:id/flush', async (req, res) => {
-  try {
-    const { content } = req.body;
-
-    if (content === undefined || content === null) {
-      return error(res, 'DRIVE_MISSING_PARAM', 'content is required', 400);
-    }
-
-    const result = await flushImmediate(req.userId, req.params.id, content, req.googleAccessToken);
+    const result = await flushImmediate(req.userId, fileId, content, req.googleAccessToken);
 
     success(res, {
       fileId: result.id,
@@ -227,43 +210,46 @@ router.put('/files/:id/flush', async (req, res) => {
       message: 'Content written to Drive immediately',
     });
   } catch (err) {
-    logger.error('immediate flush failed', { fileId: req.params.id, error: err.message });
+    logger.error('immediate flush failed', { fileId: req.params[0], error: err.message });
     error(res, 'DRIVE_FLUSH_ERROR', 'Failed to write to Drive', 500, err.message);
   }
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// DELETE /drive/files/:id — Delete file or folder
+// PUT /drive/files/* — Update file content (add to write buffer)
+// Body: { content }
+// Does NOT write to Drive immediately — buffers in Redis for 60s batch flush.
 // ─────────────────────────────────────────────────────────────────────────
-router.delete('/files/:id', async (req, res) => {
+router.put('/files/*', async (req, res) => {
   try {
-    const driveClient = getDriveFromReq(req);
+    const fileId = extractFileId(req);
+    const { content } = req.body;
 
-    // Check if it's a folder or file
-    const metadata = await getMetadata(driveClient, req.params.id);
-
-    if (metadata.mimeType === MIME_TYPES.FOLDER) {
-      await deleteFolder(driveClient, req.params.id);
-    } else {
-      await deleteFile(driveClient, req.params.id);
+    if (content === undefined || content === null) {
+      return error(res, 'DRIVE_MISSING_PARAM', 'content is required', 400);
     }
 
-    success(res, { deleted: true, id: req.params.id });
+    await addToBuffer(req.userId, fileId, content, req.googleAccessToken);
+
+    success(res, {
+      fileId,
+      buffered: true,
+      message: 'Content buffered — will be written to Drive within 60 seconds',
+    });
   } catch (err) {
-    if (err.code === 404) {
-      return error(res, 'DRIVE_FILE_NOT_FOUND', 'File not found', 404);
-    }
-    logger.error('delete failed', { fileId: req.params.id, error: err.message });
-    error(res, 'DRIVE_DELETE_ERROR', 'Failed to delete', 500, err.message);
+    logger.error('buffer write failed', { fileId: extractFileId(req), error: err.message });
+    error(res, 'DRIVE_BUFFER_ERROR', 'Failed to buffer content', 500, err.message);
   }
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// PATCH /drive/files/:id/rename — Rename file or folder
+// PATCH /drive/files/*/rename — Rename file or folder
 // Body: { newName }
+// NOTE: Must be registered BEFORE the generic DELETE /files/* route
 // ─────────────────────────────────────────────────────────────────────────
-router.patch('/files/:id/rename', async (req, res) => {
+router.patch(/^\/files\/(.+)\/rename$/, async (req, res) => {
   try {
+    const fileId = req.params[0];
     const { newName } = req.body;
 
     if (!newName) {
@@ -271,11 +257,38 @@ router.patch('/files/:id/rename', async (req, res) => {
     }
 
     const driveClient = getDriveFromReq(req);
-    const result = await renameFile(driveClient, req.params.id, newName);
+    const result = await renameFile(driveClient, fileId, newName);
     success(res, result);
   } catch (err) {
-    logger.error('rename failed', { fileId: req.params.id, error: err.message });
+    logger.error('rename failed', { fileId: req.params[0], error: err.message });
     error(res, 'DRIVE_RENAME_ERROR', 'Failed to rename', 500, err.message);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// DELETE /drive/files/* — Delete file or folder
+// ─────────────────────────────────────────────────────────────────────────
+router.delete('/files/*', async (req, res) => {
+  try {
+    const fileId = extractFileId(req);
+    const driveClient = getDriveFromReq(req);
+
+    // Check if it's a folder or file
+    const metadata = await getMetadata(driveClient, fileId);
+
+    if (metadata.mimeType === MIME_TYPES.FOLDER) {
+      await deleteFolder(driveClient, fileId);
+    } else {
+      await deleteFile(driveClient, fileId);
+    }
+
+    success(res, { deleted: true, id: fileId });
+  } catch (err) {
+    if (err.code === 404) {
+      return error(res, 'DRIVE_FILE_NOT_FOUND', 'File not found', 404);
+    }
+    logger.error('delete failed', { fileId: extractFileId(req), error: err.message });
+    error(res, 'DRIVE_DELETE_ERROR', 'Failed to delete', 500, err.message);
   }
 });
 

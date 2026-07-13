@@ -152,13 +152,13 @@ const createMockDriveClient = () => {
         const id = pathToId(targetPath);
 
         const isFolder = requestBody.mimeType === 'application/vnd.google-apps.folder';
+        let content = '';
 
         if (isFolder) {
           if (!fs.existsSync(targetPath)) {
             fs.mkdirSync(targetPath, { recursive: true });
           }
         } else {
-          let content = '';
           if (media && media.body) {
             content = await streamToString(media.body);
           }

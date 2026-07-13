@@ -74,6 +74,21 @@ const authMiddleware = async (req, res, next) => {
 
   const token = extractToken(req);
 
+  // ── Development bypass: no token required in dev mode ──────────────
+  const isDev = process.env.NODE_ENV !== 'production';
+  if (!token && isDev) {
+    req.user = {
+      id: 'dev-user-123',
+      userId: 'dev-user-123',
+      email: 'dev@orion.ide',
+      googleAccessToken: 'dev-token',
+    };
+    req.headers['x-user-id'] = 'dev-user-123';
+    req.headers['x-user-email'] = 'dev@orion.ide';
+    req.headers['x-google-access-token'] = 'dev-token';
+    return next();
+  }
+
   if (!token) {
     return res.status(401).json({
       error: {

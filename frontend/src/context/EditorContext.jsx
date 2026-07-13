@@ -59,9 +59,12 @@ export const EditorProvider = ({ children }) => {
     restoreSession();
   }, []);
 
+  // Track files currently being opened to prevent duplicate concurrent opens
+  const openingFilesRef = useRef(new Set());
+
   // ── Open a file ────────────────────────────────────────────────────
   const openFile = useCallback(async (fileId, fileName) => {
-    // Check if already open
+    // Check if already open via ref (fast path)
     const existing = openFilesRef.current.find((f) => f.fileId === fileId);
     if (existing) {
       setActiveFileId(fileId);
@@ -84,6 +87,10 @@ export const EditorProvider = ({ children }) => {
       return;
     }
 
+    // Prevent concurrent opens of the same file (race condition guard)
+    if (openingFilesRef.current.has(fileId)) return;
+    openingFilesRef.current.add(fileId);
+
     const langInfo = getLanguageFromFileName(fileName);
 
     // Load content from Drive
@@ -103,11 +110,17 @@ export const EditorProvider = ({ children }) => {
       isDirty: false,
     };
 
-    setOpenFiles((prev) => [...prev, newFile]);
+    // Use functional setState to deduplicate (handles race between concurrent opens)
+    setOpenFiles((prev) => {
+      if (prev.some((f) => f.fileId === fileId)) return prev;
+      return [...prev, newFile];
+    });
     setActiveFileId(fileId);
 
-    // Sync with backend session
+    // Sync with backend session (fire and forget)
     editorService.openFile(fileId, fileName, langInfo.monacoLanguage).catch(() => {});
+
+    openingFilesRef.current.delete(fileId);
   }, []);
 
   // ── Close a file ────────────────────────────────────────────────────

@@ -14,7 +14,9 @@ const editorProxy = createProxyMiddleware({
   target: EDITOR_SERVICE_URL,
   changeOrigin: true,
   ws: true, // Enable WebSocket proxying for real-time editor events
-  // No pathRewrite needed — editor-service expects /editor/session/* paths
+  pathRewrite: {
+    '^/': '/editor/', // Express strips /api/editor, so /session/state → /editor/session/state
+  },
   on: {
     proxyReq: (proxyReq, req) => {
       if (req.requestId) {
@@ -50,4 +52,4 @@ const mountEditorRoutes = (app) => {
   app.use('/api/editor', editorProxy);
 };
 
-module.exports = { mountEditorRoutes };
+module.exports = { mountEditorRoutes, editorProxy };
