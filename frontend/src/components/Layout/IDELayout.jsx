@@ -1,13 +1,7 @@
-/**
- * Orion IDE — IDE Layout
- *
- * Main IDE layout using custom flex resizers instead of percentage-based panel libraries.
- * This guarantees the panels never stack or overlap, and maintains pixel-perfect boundaries.
- */
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useEditor } from '../../context/EditorContext';
+import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import EditorPane from '../Editor/EditorPane';
 import TerminalPanel from '../Terminal/TerminalPanel';
 import RunButton from '../Topbar/RunButton';
@@ -19,7 +13,7 @@ import CommandPalette from '../CommandPalette/CommandPalette';
 import useTerminal from '../../hooks/useTerminal';
 import useFileTree from '../../hooks/useFileTree';
 
-import { Files, Search, GitBranch, PlayCircle, Bot, Settings as SettingsIcon, ArrowLeft } from 'lucide-react';
+import { Files, Search, GitBranch, PlayCircle, Bot, Settings as SettingsIcon, ArrowLeft, ChevronLeft, ChevronRight, PanelLeft, PanelBottom, PanelRight, X, Minus, Square } from 'lucide-react';
 
 const ICONS = {
   files: Files,
@@ -33,7 +27,8 @@ const PANELS = [
   { id: 'search', icon: ICONS.search, title: 'Search' },
   { id: 'git', icon: ICONS.git, title: 'Source Control' },
   { id: 'run', icon: ICONS.run, title: 'Run & Debug' },
-  { id: 'agent', title: 'AI Agent' },
+  { id: 'agent', title: 'Extensions' },
+  { id: 'account', title: 'Account' },
   { id: 'settings', title: 'Settings' },
 ];
 
@@ -46,20 +41,21 @@ function UserMenu({ onBackToProjects }) {
   return (
     <div style={{ position: 'relative' }}>
       <button onClick={() => setOpen(!open)} title={user.name || user.email} style={{
-        width: 28, height: 28, borderRadius: '50%', border: '2px solid var(--border-default)',
+        width: 24, height: 24, borderRadius: '50%', border: 'none',
         cursor: 'pointer', overflow: 'hidden', padding: 0, background: 'var(--bg-emphasis)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center'
       }}>
         {user.picture ? (
           <img src={user.picture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : (
-          <span style={{ color: 'var(--text-primary)', fontSize: 12, fontWeight: 600 }}>
+          <span style={{ color: 'var(--text-primary)', fontSize: 10, fontWeight: 600 }}>
             {(user.name || '?')[0].toUpperCase()}
           </span>
         )}
       </button>
       {open && (
         <div style={{
-          position: 'absolute', bottom: 40, left: 0, background: 'var(--bg-subtle)',
+          position: 'absolute', bottom: 30, left: 30, background: 'var(--bg-subtle)',
           border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)',
           padding: 8, minWidth: 180, zIndex: 999, boxShadow: 'var(--shadow-md)',
         }}>
@@ -108,10 +104,9 @@ function SidebarContent({ panel, tree, expandedFolders, isLoading, error, onTogg
     );
   }
 
-  // Stub panels with helpful messages
   const stubs = {
-    git: { icon: '⎇', title: 'Source Control', desc: 'Git integration requires a local repository. Coming in a future update.' },
-    run: { icon: '▶', title: 'Run & Debug', desc: 'Use the Run button in the editor toolbar, or press Ctrl+P → "Run Active File".' },
+    git: { icon: '⎇', title: 'Source Control', desc: 'Git integration coming soon.' },
+    run: { icon: '▶', title: 'Run & Debug', desc: 'Use the topbar Run button.' },
   };
   const stub = stubs[panel];
   return (
@@ -125,6 +120,14 @@ function SidebarContent({ panel, tree, expandedFolders, isLoading, error, onTogg
   );
 }
 
+const CustomResizeHandle = () => (
+  <PanelResizeHandle style={{ width: 1, background: 'var(--border-default)', transition: 'background 0.2s', outline: 'none' }} />
+);
+
+const CustomHorizontalResizeHandle = () => (
+  <PanelResizeHandle style={{ height: 1, background: 'var(--border-default)', transition: 'background 0.2s', outline: 'none' }} />
+);
+
 /* ── IDE Layout ────────────────────────────────────────────────────────── */
 const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
   const { lines, isRunning, clearTerminal, runCode, stopExecution } = useTerminal();
@@ -132,72 +135,14 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
   const [activePanel, setActivePanel] = useState('files');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // Custom panel sizes in pixels
-  const [sidebarWidth, setSidebarWidth] = useState(260);
-  const [terminalHeight, setTerminalHeight] = useState(220);
-  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
-  const [isResizingTerminal, setIsResizingTerminal] = useState(false);
-
-  // Load file tree on mount
   useEffect(() => {
     if (projectId) fileTree.loadTree(projectId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
-
-  // Sidebar drag handle
-  const handleSidebarMouseDown = (e) => {
-    e.preventDefault();
-    setIsResizingSidebar(true);
-  };
-
-  // Terminal drag handle
-  const handleTerminalMouseDown = (e) => {
-    e.preventDefault();
-    setIsResizingTerminal(true);
-  };
-
-  // Mouse move resize listener
-  useEffect(() => {
-    const handleMouseMove = (e) => {
-      if (isResizingSidebar) {
-        const newWidth = e.clientX - 48; // Substract activity bar (48px)
-        if (newWidth >= 240 && newWidth <= 500) {
-          setSidebarWidth(newWidth);
-        }
-      }
-      if (isResizingTerminal) {
-        const newHeight = window.innerHeight - e.clientY;
-        if (newHeight >= 120 && newHeight <= window.innerHeight - 200) {
-          setTerminalHeight(newHeight);
-        }
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizingSidebar(false);
-      setIsResizingTerminal(false);
-    };
-
-    if (isResizingSidebar || isResizingTerminal) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = isResizingSidebar ? 'col-resize' : 'row-resize';
-      document.body.style.userSelect = 'none';
-    } else {
-      document.body.style.cursor = 'default';
-      document.body.style.userSelect = '';
-    }
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isResizingSidebar, isResizingTerminal]);
 
   return (
     <div style={{
-      display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden',
-      background: 'var(--bg-default)', color: 'var(--text-primary)', fontFamily: 'var(--font-ui)',
+      display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden',
+      background: '#1e1e1e', color: '#cccccc', fontFamily: 'var(--font-ui)',
     }}>
       <CommandPalette
         tree={fileTree.tree}
@@ -212,205 +157,173 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
         }}
       />
 
-      {/* Activity Bar */}
-      <aside style={{
-        width: 48, background: 'var(--bg-canvas)', borderRight: '1px solid var(--border-default)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 8, gap: 6, flexShrink: 0,
-        zIndex: 2,
+      {/* Topbar / Titlebar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        height: 35, background: '#333333', borderBottom: '1px solid #252526', flexShrink: 0,
+        paddingLeft: 8, paddingRight: 0, userSelect: 'none'
       }}>
-        {PANELS.map((p) => {
-          const isActive = p.id === activePanel && !isSidebarCollapsed;
-          return (
-            <div key={p.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
-              {/* Vertical neon active indicator */}
-              <div style={{
-                position: 'absolute', left: 0, width: 2, height: 20,
-                background: isActive ? 'var(--accent-blue-subtle)' : 'transparent',
-                borderRadius: '0 4px 4px 0',
-                boxShadow: isActive ? '0 0 10px var(--accent-blue-subtle)' : 'none',
-                transition: 'all var(--transition-normal)',
-              }} />
-
-              <button title={p.title} onClick={() => {
-                if (activePanel === p.id) {
-                  setIsSidebarCollapsed(!isSidebarCollapsed);
-                } else {
-                  setActivePanel(p.id);
-                  setIsSidebarCollapsed(false);
-                }
-              }} style={{
-                width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: isActive ? 'rgba(31, 111, 235, 0.08)' : 'transparent', border: 'none', borderRadius: 8,
-                cursor: 'pointer', transition: 'all var(--transition-normal)', padding: 0,
-                color: isActive ? 'var(--accent-blue-subtle)' : 'var(--text-muted)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.05)';
-                if (!isActive) {
-                  e.currentTarget.style.background = 'var(--bg-subtle)';
-                  e.currentTarget.style.color = 'var(--text-primary)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                if (!isActive) {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = 'var(--text-muted)';
-                }
-              }}
-              >
-                {p.icon ? <p.icon size={18} /> : p.id === 'settings' ? <SettingsIcon size={18} /> : <Bot size={18} />}
-              </button>
-            </div>
-          );
-        })}
-        <div style={{ flex: 1 }} />
-        <div style={{ marginBottom: 12 }}>
-          <UserMenu onBackToProjects={onBackToProjects} />
+        {/* Left Menu Items */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 13, color: '#cccccc' }}>
+          <div style={{ cursor: 'pointer', padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center' }}>File</div>
+          <div style={{ cursor: 'pointer', padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center' }}>Edit</div>
+          <div style={{ cursor: 'pointer', padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center' }}>Selection</div>
+          <div style={{ cursor: 'pointer', padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center' }}>View</div>
+          <div style={{ cursor: 'pointer', padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center' }}>Go</div>
+          <div style={{ cursor: 'pointer', padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center' }}>Run</div>
+          <div style={{ cursor: 'pointer', padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center' }}>Terminal</div>
+          <div style={{ cursor: 'pointer', padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center' }}>Help</div>
         </div>
-      </aside>
 
-      {/* Main Workspace Layout */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Sidebar Panel */}
-        {!isSidebarCollapsed && (
-          <div style={{
-            width: sidebarWidth,
-            minWidth: 240,
-            maxWidth: 500,
-            background: 'var(--bg-canvas)',
-            borderRight: '1px solid var(--border-default)',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            flexShrink: 0,
-          }}>
-            {activePanel !== 'files' && (
-              <div style={{
-                padding: '12px 16px', fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
-                letterSpacing: '0.5px', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-default)',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              }}>
-                <span>{activePanel === 'agent' ? 'AI Agent' : PANELS.find(p => p.id === activePanel)?.title}</span>
-              </div>
-            )}
-            <SidebarContent
-              panel={activePanel}
-              tree={fileTree.tree}
-              expandedFolders={fileTree.expandedFolders}
-              isLoading={fileTree.isLoading}
-              error={fileTree.error}
-              onToggleFolder={fileTree.expandFolder}
-              onCreateItem={fileTree.createItem}
-              onDeleteItem={fileTree.deleteItem}
-              onRenameItem={fileTree.renameItem}
-              onRefresh={fileTree.refreshTree}
-            />
-          </div>
-        )}
-
-        {/* Sidebar Resizer Handle */}
-        {!isSidebarCollapsed && (
-          <div
-            onMouseDown={handleSidebarMouseDown}
-            style={{
-              width: 4,
-              cursor: 'col-resize',
-              background: isResizingSidebar ? 'var(--accent-blue)' : 'transparent',
-              transition: 'background 0.2s',
-              zIndex: 10,
-              flexShrink: 0,
+        {/* Center Search Pill */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ChevronLeft size={16} color="#cccccc" style={{ cursor: 'pointer', opacity: 0.8 }} />
+          <ChevronRight size={16} color="#cccccc" style={{ cursor: 'pointer', opacity: 0.8 }} />
+          <button
+            onClick={() => {
+              const event = new KeyboardEvent('keydown', { key: 'p', ctrlKey: true });
+              window.dispatchEvent(event);
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-blue)'; }}
-            onMouseLeave={(e) => { if (!isResizingSidebar) e.currentTarget.style.background = 'transparent'; }}
-          />
-        )}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              padding: '2px 24px', background: '#3c3c3c',
+              border: '1px solid #3c3c3c', borderRadius: 6,
+              color: '#cccccc', fontSize: 13, fontFamily: 'var(--font-ui)',
+              cursor: 'pointer', width: 350,
+            }}
+          >
+            <Search size={14} style={{ opacity: 0.8 }} />
+            <span>Orion IDE</span>
+          </button>
+        </div>
 
-        {/* Main Editor & Terminal Container */}
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-          {/* Topbar */}
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '6px 16px', background: 'var(--bg-canvas)', borderBottom: '1px solid var(--border-default)', flexShrink: 0,
-            height: 38,
-          }}>
-            {/* Logo brand */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{
-                width: 6, height: 6, borderRadius: '50%',
-                background: 'var(--accent-blue)', boxShadow: '0 0 8px var(--accent-blue)',
-              }} />
-              <div style={{
-                fontSize: 12, fontWeight: 700,
-                background: 'linear-gradient(135deg, var(--text-primary) 30%, var(--accent-blue-subtle) 100%)',
-                WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                letterSpacing: '-0.3px',
-              }}>
-                Orion IDE
+        {/* Right Actions & Window Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+          <div style={{ display: 'flex', gap: 8, marginRight: 16 }}>
+             <PanelLeft size={16} style={{ cursor: 'pointer', opacity: 0.8 }} onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} />
+             <PanelBottom size={16} style={{ cursor: 'pointer', opacity: 0.8 }} />
+             <PanelRight size={16} style={{ cursor: 'pointer', opacity: 0.8 }} />
+          </div>
+          <div style={{ display: 'flex', height: '100%' }}>
+            <div style={{ width: 46, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Minus size={16} /></div>
+            <div style={{ width: 46, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Square size={14} /></div>
+            <div style={{ width: 46, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }} onMouseEnter={e => e.currentTarget.style.background = '#e81123'} onMouseLeave={e => e.currentTarget.style.background = 'transparent'}><X size={16} /></div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* Activity Bar */}
+        <aside style={{
+          width: 48, background: '#333333',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 10, gap: 16, flexShrink: 0,
+          zIndex: 2,
+        }}>
+          {PANELS.filter(p => !['settings', 'account'].includes(p.id)).map((p) => {
+            const isActive = p.id === activePanel && !isSidebarCollapsed;
+            return (
+              <div key={p.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+                <div style={{
+                  position: 'absolute', left: 0, top: 0, bottom: 0,
+                  width: 2, background: isActive ? '#007acc' : 'transparent',
+                }} />
+                <button title={p.title} onClick={() => {
+                  if (activePanel === p.id) setIsSidebarCollapsed(!isSidebarCollapsed);
+                  else { setActivePanel(p.id); setIsSidebarCollapsed(false); }
+                }} style={{
+                  width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+                  color: isActive ? '#ffffff' : '#858585',
+                }}>
+                  {p.icon ? <p.icon size={24} strokeWidth={1.5} /> : <Bot size={24} strokeWidth={1.5} />}
+                </button>
               </div>
+            );
+          })}
+          <div style={{ flex: 1 }} />
+          <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+               <div style={{ position: 'absolute', left: -8, top: 0, bottom: 0, width: 2, background: activePanel === 'account' ? '#007acc' : 'transparent' }} />
+               <UserMenu onBackToProjects={onBackToProjects} />
             </div>
-
-            {/* Center Command Pill button */}
-            <button
-              onClick={() => {
-                const event = new KeyboardEvent('keydown', { key: 'p', ctrlKey: true });
-                window.dispatchEvent(event);
-              }}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                padding: '4px 16px', background: 'var(--bg-subtle)',
-                border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)',
-                color: 'var(--text-muted)', fontSize: 11, fontFamily: 'var(--font-ui)',
-                cursor: 'pointer', transition: 'all var(--transition-normal)',
-                width: '100%', maxWidth: 360,
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-emphasis)';
-                e.currentTarget.style.background = 'var(--bg-emphasis)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--border-default)';
-                e.currentTarget.style.background = 'var(--bg-subtle)';
-              }}
-            >
-              <Search size={10} style={{ opacity: 0.6 }} />
-              <span>Search files, commands... (Ctrl+P)</span>
-            </button>
-
-            {/* Right actions */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <RunButton onRun={runCode} onStop={stopExecution} isRunning={isRunning} />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%' }}>
+               <div style={{ position: 'absolute', left: -8, top: 0, bottom: 0, width: 2, background: activePanel === 'settings' ? '#007acc' : 'transparent' }} />
+               <button title="Settings" onClick={() => { setActivePanel('settings'); setIsSidebarCollapsed(false); }} style={{
+                 background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+                 color: activePanel === 'settings' ? '#ffffff' : '#858585',
+               }}>
+                 <SettingsIcon size={24} strokeWidth={1.5} />
+               </button>
             </div>
           </div>
+        </aside>
 
-          {/* Editor and Terminal Stack */}
-          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-            {/* Editor Area */}
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <EditorPane />
-            </div>
+        {/* Resizable Layout */}
+        <PanelGroup direction="horizontal">
+          {!isSidebarCollapsed && (
+            <>
+              <Panel defaultSize={20} minSize={15} maxSize={40} style={{ display: 'flex', flexDirection: 'column', background: '#252526' }}>
+                <div style={{
+                  padding: '10px 20px', fontSize: 11, fontWeight: 400, color: '#cccccc',
+                  textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                  <span>{activePanel === 'agent' ? 'EXTENSIONS' : PANELS.find(p => p.id === activePanel)?.title.toUpperCase()}</span>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                     <span style={{ cursor: 'pointer', fontWeight: 'bold' }}>...</span>
+                  </div>
+                </div>
+                <SidebarContent
+                  panel={activePanel}
+                  tree={fileTree.tree}
+                  expandedFolders={fileTree.expandedFolders}
+                  isLoading={fileTree.isLoading}
+                  error={fileTree.error}
+                  onToggleFolder={fileTree.expandFolder}
+                  onCreateItem={fileTree.createItem}
+                  onDeleteItem={fileTree.deleteItem}
+                  onRenameItem={fileTree.renameItem}
+                  onRefresh={fileTree.refreshTree}
+                />
+              </Panel>
+              <CustomResizeHandle />
+            </>
+          )}
 
-            {/* Horizontal Resizer Handle */}
-            <div
-              onMouseDown={handleTerminalMouseDown}
-              style={{
-                height: 4,
-                cursor: 'row-resize',
-                background: isResizingTerminal ? 'var(--accent-blue)' : 'transparent',
-                borderTop: '1px solid var(--border-default)',
-                transition: 'background 0.2s',
-                zIndex: 10,
-                flexShrink: 0,
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--accent-blue)'; }}
-              onMouseLeave={(e) => { if (!isResizingTerminal) e.currentTarget.style.background = 'transparent'; }}
-            />
+          <Panel minSize={30} style={{ display: 'flex', flexDirection: 'column', background: '#1e1e1e' }}>
+            <PanelGroup direction="vertical">
+              <Panel defaultSize={70} minSize={20} style={{ display: 'flex', flexDirection: 'column' }}>
+                <EditorPane />
+              </Panel>
+              <CustomHorizontalResizeHandle />
+              <Panel defaultSize={30} minSize={10} style={{ display: 'flex', flexDirection: 'column' }}>
+                 <TerminalPanel lines={lines} isRunning={isRunning} onClear={clearTerminal} projectId={projectId} />
+              </Panel>
+            </PanelGroup>
+          </Panel>
+        </PanelGroup>
+      </div>
 
-            {/* Terminal Area */}
-            <div style={{ height: terminalHeight, minHeight: 120, overflow: 'hidden', flexShrink: 0 }}>
-              <TerminalPanel lines={lines} isRunning={isRunning} onClear={clearTerminal} projectId={projectId} />
-            </div>
+      {/* Status Bar */}
+      <div style={{
+        height: 22, background: '#007acc', color: '#ffffff', display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', padding: '0 8px', fontSize: 12, flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+            <GitBranch size={12} /> main
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+            ⟳ 0 ↓ 0 ↑
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+            ⊗ 0 ⚠ 0
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+           <div style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+              <span style={{ fontWeight: 'bold' }}>((•))</span> Go Live
+           </div>
+           <div style={{ cursor: 'pointer' }}>🔔</div>
         </div>
       </div>
     </div>

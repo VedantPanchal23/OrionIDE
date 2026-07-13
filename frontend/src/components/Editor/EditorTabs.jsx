@@ -51,8 +51,7 @@ const EditorTabs = () => {
       onWheel={handleWheel}
       style={{
         display: 'flex',
-        background: 'var(--bg-canvas)',
-        borderBottom: '1px solid var(--border-default)',
+        background: 'var(--bg-inset)',
         overflowX: 'auto',
         overflowY: 'hidden',
         scrollbarWidth: 'none',
@@ -79,14 +78,15 @@ const EditorTabs = () => {
               height: '100%',
               cursor: 'pointer',
               background: isActive ? 'var(--bg-default)' : 'transparent',
-              borderBottom: isActive ? '2px solid var(--accent-blue-subtle)' : '2px solid transparent',
+              borderTop: isActive ? '1px solid var(--accent-blue)' : '1px solid transparent',
+              borderBottom: 'none',
               borderRight: '1px solid var(--border-default)',
               color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
               fontSize: 'var(--font-size-md)',
               fontFamily: 'var(--font-ui)',
               fontWeight: isActive ? 500 : 400,
               whiteSpace: 'nowrap',
-              transition: 'all var(--transition-normal)',
+              transition: 'background 50ms ease, color 50ms ease',
               userSelect: 'none',
               minWidth: 0,
             }}
@@ -138,7 +138,7 @@ const EditorTabs = () => {
                 cursor: 'pointer', padding: 2, borderRadius: 4,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 width: 16, height: 16, marginLeft: 2,
-                transition: 'all var(--transition-fast)',
+                transition: 'background 50ms ease, color 50ms ease',
               }}
               onMouseEnter={(e) => {
                 e.stopPropagation();

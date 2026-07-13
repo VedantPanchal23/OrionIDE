@@ -1,10 +1,3 @@
-/**
- * Orion IDE — File Tree Component
- *
- * Recursive tree with folder expand/collapse, file icons,
- * right-click context menu, inline rename, and loading skeletons.
- */
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useEditor } from '../../context/EditorContext';
 import { getLanguageFromFileName } from '../../utils/languageMap';
@@ -18,7 +11,12 @@ import {
   FileCode2,
   RefreshCw,
   FilePlus,
-  FolderPlus
+  FolderPlus,
+  FileJson,
+  FileCog,
+  FileText,
+  Terminal,
+  Image as ImageIcon
 } from 'lucide-react';
 
 /* ── Context Menu ─────────────────────────────────────────────────────── */
@@ -37,27 +35,35 @@ const ContextMenu = ({ x, y, options, onClose }) => {
   return (
     <div ref={ref} style={{
       position: 'fixed', left: x, top: y, zIndex: 1000,
-      background: 'var(--bg-subtle)', border: '1px solid var(--border-default)', borderRadius: 'var(--radius-sm)',
+      background: '#252526', border: '1px solid #454545', borderRadius: 4,
       padding: '4px 0', minWidth: 160,
-      boxShadow: 'var(--shadow-md)',
-      fontFamily: 'var(--font-ui)', fontSize: 'var(--font-size-md)',
+      boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+      fontFamily: 'var(--font-ui)', fontSize: 13, color: '#cccccc'
     }}>
       {options.map((opt, i) =>
         opt.separator ? (
-          <div key={i} style={{ height: 1, background: 'var(--bg-emphasis)', margin: '4px 0' }} />
+          <div key={i} style={{ height: 1, background: '#454545', margin: '4px 0' }} />
         ) : (
           <div
             key={i}
             onClick={() => { opt.action(); onClose(); }}
             style={{
-              padding: '6px 12px', cursor: 'pointer', color: opt.danger ? 'var(--accent-red-emphasis)' : 'var(--text-primary)',
-              display: 'flex', alignItems: 'center', gap: 8, transition: 'background var(--transition-fast)',
+              padding: '4px 24px 4px 12px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-emphasis)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#094771';
+              e.currentTarget.style.color = '#ffffff';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#cccccc';
+            }}
           >
-            {opt.icon && <span style={{ display: 'flex', color: 'var(--text-muted)' }}>{opt.icon}</span>}
-            {opt.label}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>{opt.label}</span>
+            </div>
+            {opt.shortcut && <span style={{ fontSize: 11, opacity: 0.6 }}>{opt.shortcut}</span>}
           </div>
         )
       )}
@@ -67,6 +73,23 @@ const ContextMenu = ({ x, y, options, onClose }) => {
 
 /* ── Tree Node ────────────────────────────────────────────────────────── */
 
+const getFileIcon = (fileName) => {
+  const ext = fileName.split('.').pop().toLowerCase();
+  switch (ext) {
+    case 'jsx': return <FileCode2 size={14} color="#61dafb" />;
+    case 'js': return <FileCode2 size={14} color="#f7df1e" />;
+    case 'ts': case 'tsx': return <FileCode2 size={14} color="#3178c6" />;
+    case 'css': return <FileCode2 size={14} color="#264de4" />;
+    case 'html': return <FileCode2 size={14} color="#e34c26" />;
+    case 'json': return <FileJson size={14} color="#cbcb41" />;
+    case 'env': case 'gitignore': case 'dockerfile': return <FileCog size={14} color="#6a9955" />;
+    case 'md': return <FileText size={14} color="#083fa1" />;
+    case 'sh': case 'bash': return <Terminal size={14} color="#4EAA25" />;
+    case 'png': case 'jpg': case 'jpeg': case 'svg': case 'gif': return <ImageIcon size={14} color="#a074c4" />;
+    default: return <FileText size={14} color="#cccccc" />;
+  }
+};
+
 const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, onCreateItem, onDelete, onRename, activeFileId }) => {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(node.name);
@@ -74,8 +97,12 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
   const inputRef = useRef(null);
 
   const isExpanded = expandedFolders.has(node.id);
-  const langInfo = !node.isFolder ? getLanguageFromFileName(node.name) : null;
   const isActiveFile = activeFileId === node.id;
+  
+  // Fake git status for visual mockup (randomly assigning some based on extension)
+  const ext = node.name.split('.').pop().toLowerCase();
+  const isModified = !node.isFolder && (ext === 'css' || ext === 'jsx');
+  const isUntracked = !node.isFolder && (ext === 'js' || ext === 'json');
 
   useEffect(() => {
     if (isRenaming && inputRef.current) {
@@ -107,16 +134,16 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
 
   const contextOptions = node.isFolder
     ? [
-        { label: 'New File', icon: <FilePlus size={14} />, action: () => onCreateItem(node.id, 'file') },
-        { label: 'New Folder', icon: <FolderPlus size={14} />, action: () => onCreateItem(node.id, 'folder') },
+        { label: 'New File...', action: () => onCreateItem(node.id, 'file') },
+        { label: 'New Folder...', action: () => onCreateItem(node.id, 'folder') },
         { separator: true },
-        { label: 'Rename', action: () => { setRenameValue(node.name); setIsRenaming(true); } },
-        { label: 'Delete', action: () => onDelete(node.id, node.name), danger: true },
+        { label: 'Rename', action: () => { setRenameValue(node.name); setIsRenaming(true); }, shortcut: 'F2' },
+        { label: 'Delete', action: () => onDelete(node.id, node.name) },
       ]
     : [
-        { label: 'Rename', action: () => { setRenameValue(node.name); setIsRenaming(true); } },
+        { label: 'Rename', action: () => { setRenameValue(node.name); setIsRenaming(true); }, shortcut: 'F2' },
         { separator: true },
-        { label: 'Delete', action: () => onDelete(node.id, node.name), danger: true },
+        { label: 'Delete', action: () => onDelete(node.id, node.name) },
       ];
 
   return (
@@ -126,42 +153,38 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
         onContextMenu={handleContextMenu}
         style={{
           display: 'flex', alignItems: 'center', gap: 4,
-          padding: '4px 8px', paddingLeft: 8 + depth * 16,
-          cursor: 'pointer', fontSize: 'var(--font-size-md)',
-          color: isActiveFile ? 'var(--text-primary)' : 'var(--text-secondary)',
-          background: isActiveFile ? 'rgba(31, 111, 235, 0.08)' : 'transparent',
-          borderLeft: isActiveFile ? '2px solid var(--accent-blue-subtle)' : '2px solid transparent',
-          transition: 'all var(--transition-fast)',
-          userSelect: 'none', borderRadius: 'var(--radius-sm)',
-          margin: '1px 4px',
+          padding: '2px 8px', paddingLeft: 8 + depth * 12,
+          cursor: 'pointer', fontSize: 13,
+          color: isModified ? '#e2c08d' : isUntracked ? '#73c991' : isActiveFile ? '#ffffff' : '#cccccc',
+          background: isActiveFile ? '#37373d' : 'transparent',
+          border: '1px solid transparent',
         }}
         onMouseEnter={(e) => {
           if (!isActiveFile) {
-            e.currentTarget.style.background = 'var(--bg-subtle)';
-            e.currentTarget.style.color = 'var(--text-primary)';
+            e.currentTarget.style.background = '#2a2d2e';
+            e.currentTarget.style.color = isModified ? '#e2c08d' : isUntracked ? '#73c991' : '#ffffff';
           }
         }}
         onMouseLeave={(e) => {
           if (!isActiveFile) {
             e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = 'var(--text-secondary)';
+            e.currentTarget.style.color = isModified ? '#e2c08d' : isUntracked ? '#73c991' : '#cccccc';
           }
         }}
       >
         {/* Chevron for folders */}
-        <span style={{ width: 14, flexShrink: 0, display: 'flex', alignItems: 'center', opacity: node.isFolder ? 1 : 0 }}>
-          {node.isFolder && (isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
+        <span style={{ width: 16, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {node.isFolder ? (isExpanded ? <ChevronDown size={14} color="#cccccc" /> : <ChevronRight size={14} color="#cccccc" />) : <span style={{ width: 14 }} />}
         </span>
 
         {/* Icon */}
-        <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+        <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginRight: 2 }}>
           {node.isFolder
-            ? (isExpanded ? <FolderOpen size={14} color="var(--accent-blue-subtle)" /> : <Folder size={14} color="var(--text-muted)" />)
-            : <FileCode2 size={14} color={langInfo?.color || 'var(--text-muted)'} />
+            ? (isExpanded ? <FolderOpen size={14} color="#dcb67a" /> : <Folder size={14} color="#dcb67a" />)
+            : getFileIcon(node.name)
           }
         </span>
 
-        {/* Name or rename input */}
         {isRenaming ? (
           <input
             ref={inputRef}
@@ -174,27 +197,26 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
             }}
             onClick={(e) => e.stopPropagation()}
             style={{
-              flex: 1, background: 'var(--bg-default)', border: '1px solid var(--border-active)',
-              color: 'var(--text-primary)', borderRadius: 'var(--radius-sm)', padding: '1px 6px',
-              fontSize: 'var(--font-size-md)', fontFamily: 'var(--font-ui)', outline: 'none',
+              flex: 1, background: '#3c3c3c', border: '1px solid #007fd4',
+              color: '#cccccc', padding: '0 2px',
+              fontSize: 'inherit', fontFamily: 'inherit', outline: 'none', height: 20,
             }}
           />
         ) : (
           <span style={{
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            fontWeight: node.isFolder && depth === 0 ? 600 : 400,
           }}>
             {node.name}
           </span>
         )}
 
-        {/* Language badge for files */}
-        {!node.isFolder && langInfo && (
+        {/* Git indicator */}
+        {!node.isFolder && (isModified || isUntracked) && (
           <span style={{
-            fontSize: 9, fontWeight: 700, color: langInfo.color,
-            fontFamily: "'JetBrains Mono', monospace", marginLeft: 'auto', flexShrink: 0,
+            marginLeft: 'auto', flexShrink: 0, fontSize: 11, fontWeight: 'bold',
+            color: isModified ? '#e2c08d' : '#73c991', marginRight: 8
           }}>
-            {langInfo.icon}
+            {isModified ? 'M' : 'U'}
           </span>
         )}
       </div>
@@ -242,9 +264,9 @@ const LoadingSkeleton = ({ depth }) => (
     {[1, 2, 3].map((i) => (
       <div key={i} style={{
         display: 'flex', alignItems: 'center', gap: 6,
-        padding: '4px 8px', paddingLeft: 8 + (depth || 0) * 16,
+        padding: '2px 8px', paddingLeft: 8 + (depth || 0) * 12,
       }}>
-        <div style={{ width: 14 + Math.random() * 80, height: 10, background: 'var(--bg-emphasis)', borderRadius: 4, animation: 'pulse 1.5s infinite' }} />
+        <div style={{ width: 14 + Math.random() * 80, height: 10, background: '#3c3c3c', borderRadius: 2 }} />
       </div>
     ))}
   </>
@@ -259,15 +281,15 @@ const ActionButton = ({ title, onClick, children }) => {
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        background: hover ? 'var(--bg-emphasis)' : 'transparent',
+        background: hover ? '#3c3c3c' : 'transparent',
         border: 'none',
-        color: hover ? 'var(--text-primary)' : 'var(--text-muted)',
+        color: hover ? '#ffffff' : '#cccccc',
         cursor: 'pointer',
         padding: 4,
         borderRadius: 4,
         display: 'flex',
         alignItems: 'center',
-        transition: 'all var(--transition-fast)',
+        transition: 'all 0.1s',
       }}
     >
       {children}
@@ -280,6 +302,7 @@ const ActionButton = ({ title, onClick, children }) => {
 const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onCreateItem, onDeleteItem, onRenameItem, onRefresh }) => {
   const { openFile, activeFileId } = useEditor();
   const [newFileDialog, setNewFileDialog] = useState({ open: false, parentId: null, type: 'file' });
+  const [isHoveringHeader, setIsHoveringHeader] = useState(false);
 
   const handleClickFile = useCallback((fileId, fileName) => {
     openFile(fileId, fileName);
@@ -318,13 +341,10 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
 
   if (error) {
     return (
-      <div style={{
-        padding: 16, fontSize: 13, color: 'var(--accent-red-emphasis)',
-        fontFamily: "'Inter', sans-serif", textAlign: 'center',
-      }}>
+      <div style={{ padding: 16, fontSize: 13, color: '#f48771', textAlign: 'center' }}>
         <div style={{ marginBottom: 8 }}>{error}</div>
         <button onClick={onRefresh} style={{
-          background: 'none', border: '1px solid var(--border-default)', color: 'var(--text-muted)',
+          background: 'none', border: '1px solid #454545', color: '#cccccc',
           padding: '4px 12px', borderRadius: 4, cursor: 'pointer', fontSize: 12,
         }}>
           Retry
@@ -335,64 +355,64 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
 
   if (!tree) {
     return (
-      <div style={{
-        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: 16, fontSize: 13, color: 'var(--border-emphasis)',
-        fontFamily: "'Inter', sans-serif", textAlign: 'center',
-      }}>
-        <div>
-          <Folder size={32} color="var(--border-emphasis)" style={{ margin: '0 auto 12px', display: 'block' }} />
-          <div>No project open</div>
-        </div>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, fontSize: 13, color: '#858585' }}>
+        <div>No project open</div>
       </div>
     );
   }
 
   return (
-    <div style={{ overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column' }}>
-      {/* Header with actions */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 16px', position: 'sticky', top: 0, background: 'var(--bg-canvas)', zIndex: 1,
-        borderBottom: '1px solid var(--border-default)',
-      }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          {tree.name}
-        </span>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <ActionButton title="New File" onClick={() => handleCreateItem(tree.id, 'file')}>
-            <FilePlus size={14} />
+    <div style={{ overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', background: '#252526', userSelect: 'none' }}>
+      {/* Workspace Header */}
+      <div 
+        onMouseEnter={() => setIsHoveringHeader(true)}
+        onMouseLeave={() => setIsHoveringHeader(false)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '4px 8px', position: 'sticky', top: 0, background: '#252526', zIndex: 1,
+          cursor: 'pointer', height: 26,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11, fontWeight: 'bold', color: '#cccccc', textTransform: 'uppercase' }}>
+          <ChevronDown size={16} />
+          <span>{tree.name}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 2, opacity: isHoveringHeader ? 1 : 0, transition: 'opacity 0.1s' }}>
+          <ActionButton title="New File..." onClick={() => handleCreateItem(tree.id, 'file')}>
+            <FilePlus size={16} />
           </ActionButton>
-          <ActionButton title="New Folder" onClick={() => handleCreateItem(tree.id, 'folder')}>
-            <FolderPlus size={14} />
+          <ActionButton title="New Folder..." onClick={() => handleCreateItem(tree.id, 'folder')}>
+            <FolderPlus size={16} />
           </ActionButton>
-          <ActionButton title="Refresh" onClick={onRefresh}>
-            <RefreshCw size={14} />
+          <ActionButton title="Refresh Explorer" onClick={onRefresh}>
+            <RefreshCw size={16} />
           </ActionButton>
         </div>
       </div>
 
       {/* Tree nodes */}
-      {tree.children?.map((child) => (
-        <TreeNode
-          key={child.id}
-          node={child}
-          depth={0}
-          expandedFolders={expandedFolders}
-          onToggleFolder={onToggleFolder}
-          onClickFile={handleClickFile}
-          onCreateItem={handleCreateItem}
-          onDelete={handleDelete}
-          onRename={onRenameItem}
-          activeFileId={activeFileId}
-        />
-      ))}
+      <div style={{ paddingBottom: 16 }}>
+        {tree.children?.map((child) => (
+          <TreeNode
+            key={child.id}
+            node={child}
+            depth={0}
+            expandedFolders={expandedFolders}
+            onToggleFolder={onToggleFolder}
+            onClickFile={handleClickFile}
+            onCreateItem={handleCreateItem}
+            onDelete={handleDelete}
+            onRename={onRenameItem}
+            activeFileId={activeFileId}
+          />
+        ))}
 
-      {tree.children?.length === 0 && (
-        <div style={{ padding: '16px 8px', fontSize: 13, color: 'var(--border-emphasis)', textAlign: 'center' }}>
-          Empty folder
-        </div>
-      )}
+        {tree.children?.length === 0 && (
+          <div style={{ padding: '16px 8px', fontSize: 13, color: '#858585', textAlign: 'center' }}>
+            Empty folder
+          </div>
+        )}
+      </div>
 
       {/* New File Dialog */}
       <NewFileDialog
@@ -402,11 +422,6 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
       />
     </div>
   );
-};
-
-const actionBtnStyle = {
-  background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
-  padding: 4, borderRadius: 4, display: 'flex', alignItems: 'center',
 };
 
 export default FileTree;
