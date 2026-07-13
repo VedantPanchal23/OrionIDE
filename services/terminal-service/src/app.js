@@ -121,7 +121,7 @@ app.use((err, req, res, _next) => {
 const server = http.createServer(app);
 
 // ── WebSocket server ──────────────────────────────────────────────────────
-const wss = new WebSocketServer({ server, path: '/ws/terminal' });
+const wss = new WebSocketServer({ server, path: '/terminal/ws/terminal' });
 
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);

@@ -6,7 +6,7 @@
 
 import api from './api';
 
-const TERMINAL_BASE = '/api/terminal';
+const TERMINAL_BASE = '/terminal';
 
 /**
  * Create a new terminal session on the backend.
