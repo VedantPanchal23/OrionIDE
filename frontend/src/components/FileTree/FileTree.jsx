@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useEditor } from '../../context/EditorContext';
 import { getLanguageFromFileName } from '../../utils/languageMap';
 import NewFileDialog from './NewFileDialog';
+import ConfirmModal from '../ConfirmModal/ConfirmModal';
 
 import {
   ChevronRight,
@@ -310,10 +311,17 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
     }
   }, [newFileDialog.parentId, onCreateItem]);
 
-  const handleDelete = useCallback((itemId, itemName) => {
-    if (window.confirm(`Delete "${itemName}"? This action moves the file to trash.`)) {
-      onDeleteItem(itemId, itemName);
-    }
+  const confirmRef = useRef(null);
+
+  const handleDelete = useCallback(async (itemId, itemName) => {
+    const ok = await confirmRef.current?.show({
+      title: 'Delete File',
+      message: `Delete "${itemName}"? This action moves the item to trash and cannot be undone.`,
+      danger: true,
+      confirmLabel: 'Delete',
+      cancelLabel: 'Cancel',
+    });
+    if (ok) onDeleteItem(itemId, itemName);
   }, [onDeleteItem]);
 
   if (isLoading && !tree) {
@@ -347,7 +355,9 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
   }
 
   return (
-    <div style={{ overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-subtle)', userSelect: 'none' }}>
+    <>
+      <ConfirmModal ref={confirmRef} />
+      <div style={{ overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-subtle)', userSelect: 'none' }}>
       {/* Workspace Header */}
       <div 
         onMouseEnter={() => setIsHoveringHeader(true)}
@@ -406,6 +416,7 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
         onCreate={handleCreateFromDialog}
       />
     </div>
+  </>
   );
 };
 
