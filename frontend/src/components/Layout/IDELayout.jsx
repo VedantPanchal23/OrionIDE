@@ -11,6 +11,7 @@ import SearchPanel from '../Search/SearchPanel';
 import CommandPalette from '../CommandPalette/CommandPalette';
 import useTerminal from '../../hooks/useTerminal';
 import useFileTree from '../../hooks/useFileTree';
+import { useToast } from '../Toast/Toast';
 
 import {
   Files, Search, GitBranch, PlayCircle, Bot, Settings as SettingsIcon,
@@ -221,6 +222,7 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
   const { lines, isRunning, clearTerminal, runCode, stopExecution } = useTerminal();
   const fileTree = useFileTree();
   const { activeFile } = useEditor();
+  const { toast } = useToast();
 
   const [activePanel,         setActivePanel]         = useState('files');
   const [isSidebarCollapsed,  setIsSidebarCollapsed]  = useState(false);
@@ -263,6 +265,34 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
     if (activePanel === panelId) setIsSidebarCollapsed(v => !v);
     else { setActivePanel(panelId); setIsSidebarCollapsed(false); }
   }, [activePanel]);
+
+  /* Toasted FileTree callbacks */
+  const handleCreateItem = useCallback(async (parentId, name, type) => {
+    try {
+      await fileTree.createItem(parentId, name, type);
+      toast({ type: 'success', title: `${type === 'folder' ? 'Folder' : 'File'} created`, message: name });
+    } catch (err) {
+      toast({ type: 'error', title: 'Create failed', message: err?.response?.data?.error?.message || err.message || 'Unknown error' });
+    }
+  }, [fileTree, toast]);
+
+  const handleDeleteItem = useCallback(async (itemId, itemName) => {
+    try {
+      await fileTree.deleteItem(itemId);
+      toast({ type: 'info', title: 'Deleted', message: itemName || 'Item deleted' });
+    } catch (err) {
+      toast({ type: 'error', title: 'Delete failed', message: err?.response?.data?.error?.message || err.message || 'Unknown error' });
+    }
+  }, [fileTree, toast]);
+
+  const handleRenameItem = useCallback(async (itemId, newName) => {
+    try {
+      await fileTree.renameItem(itemId, newName);
+      toast({ type: 'success', title: 'Renamed', message: `→ ${newName}` });
+    } catch (err) {
+      toast({ type: 'error', title: 'Rename failed', message: err?.response?.data?.error?.message || err.message || 'Unknown error' });
+    }
+  }, [fileTree, toast]);
 
   /* ── Render ──────────────────────────────────────────────────────────── */
   return (
@@ -453,9 +483,9 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
                       isLoading={fileTree.isLoading}
                       error={fileTree.error}
                       onToggleFolder={fileTree.expandFolder}
-                      onCreateItem={fileTree.createItem}
-                      onDeleteItem={fileTree.deleteItem}
-                      onRenameItem={fileTree.renameItem}
+                      onCreateItem={handleCreateItem}
+                      onDeleteItem={handleDeleteItem}
+                      onRenameItem={handleRenameItem}
                       onRefresh={fileTree.refreshTree}
                     />
                   </div>

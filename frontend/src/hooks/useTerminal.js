@@ -4,7 +4,7 @@
  * Manages terminal output state and SSE connection lifecycle.
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { executeFile, streamExecution } from '../services/executionService';
 import { getLanguageFromFileName } from '../utils/languageMap';
 
@@ -105,6 +105,16 @@ const useTerminal = () => {
     setIsRunning(false);
     appendLine('Execution stopped by user', 'system');
   }, [appendLine]);
+
+  // Clean up SSE stream on unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, []);
 
   return {
     lines,

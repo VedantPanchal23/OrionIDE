@@ -312,7 +312,7 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
 
   const handleDelete = useCallback((itemId, itemName) => {
     if (window.confirm(`Delete "${itemName}"? This action moves the file to trash.`)) {
-      onDeleteItem(itemId);
+      onDeleteItem(itemId, itemName);
     }
   }, [onDeleteItem]);
 
