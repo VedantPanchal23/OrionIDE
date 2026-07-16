@@ -1,21 +1,7 @@
-/**
- * Orion IDE — Settings Panel
- *
- * Sidebar settings panel for editor preferences and theme switching.
- * All values are persisted via ThemeContext → localStorage.
- */
-
 import React from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import {
-  Sun,
-  Moon,
-  RotateCcw,
-  Type,
-  Columns2,
-  WrapText,
-  Map,
-  Hash,
+  Sun, Moon, RotateCcw, Type, Columns2, WrapText, Map, Hash, Code,
 } from 'lucide-react';
 
 const SettingRow = ({ icon: Icon, label, children }) => (
@@ -108,8 +94,8 @@ const stepBtnStyle = {
 
 const Settings = () => {
   const {
-    theme, editorFontSize, tabSize, wordWrap, minimap, lineNumbers,
-    setTheme, setEditorFontSize, setTabSize, setWordWrap, setMinimap,
+    theme, editorFontSize, editorFontFamily, tabSize, wordWrap, minimap, lineNumbers,
+    setTheme, setEditorFontSize, setEditorFontFamily, setTabSize, setWordWrap, setMinimap,
     setLineNumbers, resetToDefaults,
   } = useTheme();
 
@@ -147,6 +133,20 @@ const Settings = () => {
 
       <SettingRow icon={Type} label="Font Size">
         <NumberInput value={editorFontSize} onChange={setEditorFontSize} min={10} max={28} />
+      </SettingRow>
+
+      <SettingRow icon={Code} label="Font Family">
+        <SelectInput
+          value={editorFontFamily}
+          onChange={setEditorFontFamily}
+          options={[
+            { value: "'JetBrains Mono', 'Fira Code', monospace", label: 'JetBrains Mono' },
+            { value: "'Fira Code', monospace", label: 'Fira Code' },
+            { value: "'Cascadia Code', monospace", label: 'Cascadia Code' },
+            { value: "'Courier New', monospace", label: 'Courier New' },
+            { value: 'monospace', label: 'System Mono' },
+          ]}
+        />
       </SettingRow>
 
       <SettingRow icon={Columns2} label="Tab Size">

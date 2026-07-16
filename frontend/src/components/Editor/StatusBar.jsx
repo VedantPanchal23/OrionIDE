@@ -6,8 +6,8 @@
 
 import React from 'react';
 import { useEditor } from '../../context/EditorContext';
+import { useTheme } from '../../context/ThemeContext';
 import { getLanguageFromFileName } from '../../utils/languageMap';
-
 import { Check, Loader2, AlertTriangle } from 'lucide-react';
 
 const DotIcon = ({ color }) => (
@@ -18,6 +18,7 @@ const DotIcon = ({ color }) => (
 
 const StatusBar = () => {
   const { activeFile, saveStatus, cursorPosition } = useEditor();
+  const { tabSize } = useTheme();
 
   if (!activeFile) return null;
 
@@ -86,7 +87,7 @@ const StatusBar = () => {
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)' }}>
           Ln {cursorPosition?.line || 1}, Col {cursorPosition?.column || 1}
         </span>
-        <span>Spaces: 2</span>
+        <span>Spaces: {tabSize}</span>
         <span>UTF-8</span>
         <span style={{
           display: 'flex',
