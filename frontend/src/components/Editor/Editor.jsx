@@ -14,7 +14,7 @@ import { registerAllSnippets } from './snippets';
 const DEBOUNCE_MS = 500;
 
 const Editor = ({ fileId, fileName, language, initialContent }) => {
-  const { updateContent, saveFile, setCursorPosition } = useEditor();
+  const { updateContent, saveFile, setCursorPosition, registerReveal } = useEditor();
   const { editorFontSize, editorFontFamily, tabSize, wordWrap, minimap, lineNumbers } = useTheme();
   const editorRef = useRef(null);
   const debounceTimerRef = useRef(null);
@@ -35,6 +35,15 @@ const Editor = ({ fileId, fileName, language, initialContent }) => {
     editor.onDidChangeCursorPosition((e) => {
       setCursorPosition({ line: e.position.lineNumber, column: e.position.column });
     });
+
+    // Register reveal callback so SearchPanel / other callers can jump to a line
+    const unregister = registerReveal(fileId, (lineNumber) => {
+      editor.revealLineInCenter(lineNumber);
+      editor.setPosition({ lineNumber, column: 1 });
+      editor.focus();
+    });
+
+    return unregister;
   };
 
   // Update editor options when preferences change

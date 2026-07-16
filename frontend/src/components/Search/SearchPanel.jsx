@@ -29,7 +29,7 @@ function flattenFiles(node) {
 }
 
 const SearchPanel = ({ tree }) => {
-  const { openFile } = useEditor();
+  const { openFile, revealLine } = useEditor();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]); // [{ fileId, fileName, matches: [{ lineNumber, lineText, matchStart, matchEnd }] }]
   const [isSearching, setIsSearching] = useState(false);
@@ -117,9 +117,13 @@ const SearchPanel = ({ tree }) => {
     });
   }, []);
 
-  const handleMatchClick = useCallback((fileId, fileName) => {
-    openFile(fileId, fileName);
-  }, [openFile]);
+  const handleMatchClick = useCallback((fileId, fileName, lineNumber) => {
+    if (lineNumber) {
+      revealLine(fileId, fileName, lineNumber);
+    } else {
+      openFile(fileId, fileName);
+    }
+  }, [openFile, revealLine]);
 
   return (
     <div style={{
@@ -231,7 +235,7 @@ const SearchPanel = ({ tree }) => {
             {expandedFiles.has(fileResult.fileId) && fileResult.matches.map((match, i) => (
               <button
                 key={i}
-                onClick={() => handleMatchClick(fileResult.fileId, fileResult.fileName)}
+                onClick={() => handleMatchClick(fileResult.fileId, fileResult.fileName, match.lineNumber)}
                 style={{
                   display: 'flex', alignItems: 'baseline', gap: 8, width: '100%',
                   padding: '3px 8px 3px 32px', background: 'none', border: 'none',

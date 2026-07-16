@@ -266,9 +266,9 @@ const ActionButton = ({ title, onClick, children }) => {
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
-        background: hover ? '#3c3c3c' : 'transparent',
+        background: hover ? 'var(--bg-emphasis)' : 'transparent',
         border: 'none',
-        color: hover ? '#ffffff' : '#cccccc',
+        color: hover ? 'var(--text-primary)' : 'var(--text-muted)',
         cursor: 'pointer',
         padding: 4,
         borderRadius: 4,
@@ -326,10 +326,10 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
 
   if (error) {
     return (
-      <div style={{ padding: 16, fontSize: 13, color: '#f48771', textAlign: 'center' }}>
+      <div style={{ padding: 16, fontSize: 13, color: 'var(--error)', textAlign: 'center' }}>
         <div style={{ marginBottom: 8 }}>{error}</div>
         <button onClick={onRefresh} style={{
-          background: 'none', border: '1px solid #454545', color: '#cccccc',
+          background: 'none', border: '1px solid var(--border-default)', color: 'var(--text-primary)',
           padding: '4px 12px', borderRadius: 4, cursor: 'pointer', fontSize: 12,
         }}>
           Retry
@@ -340,7 +340,7 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
 
   if (!tree) {
     return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, fontSize: 13, color: '#858585' }}>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, fontSize: 13, color: 'var(--text-muted)' }}>
         <div>No project open</div>
       </div>
     );
@@ -358,7 +358,7 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
           cursor: 'pointer', height: 26,
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11, fontWeight: 'bold', color: '#cccccc', textTransform: 'uppercase' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11, fontWeight: 'bold', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
           <ChevronDown size={16} />
           <span>{tree.name}</span>
         </div>
@@ -393,7 +393,7 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
         ))}
 
         {tree.children?.length === 0 && (
-          <div style={{ padding: '16px 8px', fontSize: 13, color: '#858585', textAlign: 'center' }}>
+          <div style={{ padding: '16px 8px', fontSize: 13, color: 'var(--text-muted)', textAlign: 'center' }}>
             Empty folder
           </div>
         )}

@@ -26,6 +26,9 @@ export const EditorProvider = ({ children }) => {
   const [saveStatus, setSaveStatus] = useState('idle'); // idle | saving | saved | error
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
 
+  // Registry of reveal callbacks: fileId → fn(lineNumber)
+  const revealLineRegistry = useRef({});
+
   // Refs for latest state access (avoids stale closure issues)
   const openFilesRef = useRef(openFiles);
   const activeFileIdRef = useRef(activeFileId);
@@ -122,6 +125,25 @@ export const EditorProvider = ({ children }) => {
 
     openingFilesRef.current.delete(fileId);
   }, []);
+
+  // ── Register editor reveal callback ────────────────────────────────
+  const registerReveal = useCallback((fileId, fn) => {
+    revealLineRegistry.current[fileId] = fn;
+    return () => { delete revealLineRegistry.current[fileId]; };
+  }, []);
+
+  // ── Reveal a line in a file (opens if needed) ───────────────────────
+  const revealLine = useCallback(async (fileId, fileName, lineNumber) => {
+    // Open/switch to file first
+    await openFile(fileId, fileName);
+    // Give Monaco time to mount if this was a new file open
+    const reveal = () => {
+      const fn = revealLineRegistry.current[fileId];
+      if (fn) fn(lineNumber);
+    };
+    // Defer slightly to ensure editor is mounted and active
+    setTimeout(reveal, 100);
+  }, [openFile]);
 
   // ── Close a file ────────────────────────────────────────────────────
   const closeFile = useCallback((fileId) => {
@@ -246,6 +268,8 @@ export const EditorProvider = ({ children }) => {
       updateContent,
       saveFile,
       switchTab,
+      registerReveal,
+      revealLine,
     }}>
       {children}
     </EditorContext.Provider>
