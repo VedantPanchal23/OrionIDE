@@ -99,11 +99,6 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
   const isExpanded = expandedFolders.has(node.id);
   const isActiveFile = activeFileId === node.id;
   
-  // Fake git status for visual mockup (randomly assigning some based on extension)
-  const ext = node.name.split('.').pop().toLowerCase();
-  const isModified = !node.isFolder && (ext === 'css' || ext === 'jsx');
-  const isUntracked = !node.isFolder && (ext === 'js' || ext === 'json');
-
   useEffect(() => {
     if (isRenaming && inputRef.current) {
       inputRef.current.focus();
@@ -155,20 +150,20 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
           display: 'flex', alignItems: 'center', gap: 4,
           padding: '2px 8px', paddingLeft: 8 + depth * 12,
           cursor: 'pointer', fontSize: 13,
-          color: isModified ? '#e2c08d' : isUntracked ? '#73c991' : isActiveFile ? '#ffffff' : '#cccccc',
+          color: isActiveFile ? '#ffffff' : '#cccccc',
           background: isActiveFile ? '#37373d' : 'transparent',
           border: '1px solid transparent',
         }}
         onMouseEnter={(e) => {
           if (!isActiveFile) {
             e.currentTarget.style.background = '#2a2d2e';
-            e.currentTarget.style.color = isModified ? '#e2c08d' : isUntracked ? '#73c991' : '#ffffff';
+            e.currentTarget.style.color = '#ffffff';
           }
         }}
         onMouseLeave={(e) => {
           if (!isActiveFile) {
             e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = isModified ? '#e2c08d' : isUntracked ? '#73c991' : '#cccccc';
+            e.currentTarget.style.color = '#cccccc';
           }
         }}
       >
@@ -207,16 +202,6 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {node.name}
-          </span>
-        )}
-
-        {/* Git indicator */}
-        {!node.isFolder && (isModified || isUntracked) && (
-          <span style={{
-            marginLeft: 'auto', flexShrink: 0, fontSize: 11, fontWeight: 'bold',
-            color: isModified ? '#e2c08d' : '#73c991', marginRight: 8
-          }}>
-            {isModified ? 'M' : 'U'}
           </span>
         )}
       </div>

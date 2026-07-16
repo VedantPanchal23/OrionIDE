@@ -8,7 +8,7 @@
 import React from 'react';
 import { useEditor } from '../../context/EditorContext';
 import { ChevronRight, FileCode } from 'lucide-react';
-import { getLanguageByFileName } from '../../utils/languageMap';
+import { getLanguageFromFileName } from '../../utils/languageMap';
 
 const Breadcrumbs = () => {
   const { openFiles, activeFileId } = useEditor();
@@ -18,7 +18,7 @@ const Breadcrumbs = () => {
 
   const fileName = activeFile.fileName || '';
   const segments = fileName.includes('/') ? fileName.split('/') : [fileName];
-  const lang = getLanguageByFileName(fileName);
+  const lang = getLanguageFromFileName(fileName);
 
   return (
     <div style={{

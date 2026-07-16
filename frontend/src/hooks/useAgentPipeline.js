@@ -4,7 +4,7 @@
  * Manages pipeline state, SSE streaming, and step approval/rejection.
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { startPipeline, getSession, approveStep, rejectStep, streamPipeline } from '../services/agentService';
 
 const useAgentPipeline = () => {
@@ -86,6 +86,16 @@ const useAgentPipeline = () => {
       setSession(updated);
     } catch {}
   }, [session]);
+
+  // Clean up SSE stream when hook unmounts
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, []);
 
   return { session, isRunning, error, start, approve, reject, refresh };
 };
