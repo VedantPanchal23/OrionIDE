@@ -159,9 +159,9 @@ const AgentPanel = () => {
     switch (status) {
       case 'running': return 'var(--accent-blue-subtle)';
       case 'waiting': return 'var(--accent-yellow)';
-      case 'approved': return '#3fb950';
+      case 'approved': return 'var(--success)';
       case 'failed': return 'var(--accent-red-emphasis)';
-      case 'override': return '#d29922';
+      case 'override': return 'var(--warning)';
       default: return 'var(--border-emphasis)';
     }
   };
@@ -197,7 +197,7 @@ const AgentPanel = () => {
 
       {/* Error */}
       {error && (
-        <div style={{ margin: '0 16px 8px', padding: '8px 12px', background: '#1c0c0c', border: '1px solid var(--accent-red-emphasis)33', borderRadius: 6, color: 'var(--accent-red-emphasis)', fontSize: 12 }}>
+        <div style={{ margin: '0 16px 8px', padding: '8px 12px', background: 'rgba(218, 54, 51, 0.1)', border: '1px solid var(--accent-red-emphasis)33', borderRadius: 6, color: 'var(--accent-red-emphasis)', fontSize: 12 }}>
           {error}
         </div>
       )}

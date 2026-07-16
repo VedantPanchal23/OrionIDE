@@ -11,6 +11,7 @@ import SearchPanel from '../Search/SearchPanel';
 import CommandPalette from '../CommandPalette/CommandPalette';
 import useTerminal from '../../hooks/useTerminal';
 import useFileTree from '../../hooks/useFileTree';
+import useNotifications from '../../hooks/useNotifications';
 import { useToast } from '../Toast/Toast';
 
 import {
@@ -223,6 +224,7 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
   const fileTree = useFileTree();
   const { activeFile } = useEditor();
   const { toast } = useToast();
+  useNotifications(); // Opens SSE connection to notification-service for real-time Drive events
 
   const [activePanel,         setActivePanel]         = useState('files');
   const [isSidebarCollapsed,  setIsSidebarCollapsed]  = useState(false);
