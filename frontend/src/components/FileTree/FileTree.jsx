@@ -35,14 +35,14 @@ const ContextMenu = ({ x, y, options, onClose }) => {
   return (
     <div ref={ref} style={{
       position: 'fixed', left: x, top: y, zIndex: 1000,
-      background: '#252526', border: '1px solid #454545', borderRadius: 4,
+      background: 'var(--bg-subtle)', border: '1px solid var(--border-default)', borderRadius: 6,
       padding: '4px 0', minWidth: 160,
-      boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
-      fontFamily: 'var(--font-ui)', fontSize: 13, color: '#cccccc'
+      boxShadow: 'var(--shadow-lg)',
+      fontFamily: 'var(--font-ui)', fontSize: 13, color: 'var(--text-primary)'
     }}>
       {options.map((opt, i) =>
         opt.separator ? (
-          <div key={i} style={{ height: 1, background: '#454545', margin: '4px 0' }} />
+          <div key={i} style={{ height: 1, background: 'var(--border-default)', margin: '4px 0' }} />
         ) : (
           <div
             key={i}
@@ -52,12 +52,12 @@ const ContextMenu = ({ x, y, options, onClose }) => {
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = '#094771';
+              e.currentTarget.style.background = 'var(--accent-blue)';
               e.currentTarget.style.color = '#ffffff';
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = 'transparent';
-              e.currentTarget.style.color = '#cccccc';
+              e.currentTarget.style.color = 'var(--text-primary)';
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -192,7 +192,7 @@ const TreeNode = ({ node, depth, expandedFolders, onToggleFolder, onClickFile, o
             }}
             onClick={(e) => e.stopPropagation()}
             style={{
-              flex: 1, background: '#3c3c3c', border: '1px solid #007fd4',
+              flex: 1, background: 'var(--bg-emphasis)', border: '1px solid var(--accent-blue)',
               color: '#cccccc', padding: '0 2px',
               fontSize: 'inherit', fontFamily: 'inherit', outline: 'none', height: 20,
             }}
@@ -251,7 +251,7 @@ const LoadingSkeleton = ({ depth }) => (
         display: 'flex', alignItems: 'center', gap: 6,
         padding: '2px 8px', paddingLeft: 8 + (depth || 0) * 12,
       }}>
-        <div style={{ width: 14 + Math.random() * 80, height: 10, background: '#3c3c3c', borderRadius: 2 }} />
+        <div style={{ width: 14 + Math.random() * 80, height: 10, background: 'var(--bg-emphasis)', borderRadius: 2 }} />
       </div>
     ))}
   </>
@@ -347,14 +347,14 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
   }
 
   return (
-    <div style={{ overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', background: '#252526', userSelect: 'none' }}>
+    <div style={{ overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-subtle)', userSelect: 'none' }}>
       {/* Workspace Header */}
       <div 
         onMouseEnter={() => setIsHoveringHeader(true)}
         onMouseLeave={() => setIsHoveringHeader(false)}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '4px 8px', position: 'sticky', top: 0, background: '#252526', zIndex: 1,
+          padding: '4px 8px', position: 'sticky', top: 0, background: 'var(--bg-subtle)', zIndex: 1,
           cursor: 'pointer', height: 26,
         }}
       >

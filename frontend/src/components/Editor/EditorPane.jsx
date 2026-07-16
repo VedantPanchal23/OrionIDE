@@ -17,8 +17,8 @@ const EditorPane = () => {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#1e1e1e',
-        color: '#cccccc',
+      background: 'var(--bg-canvas)',
+      color: 'var(--text-secondary)',
         fontFamily: 'var(--font-ui)',
         userSelect: 'none',
         position: 'relative',
@@ -71,7 +71,7 @@ const EditorPane = () => {
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      background: '#1e1e1e',
+      background: 'var(--bg-canvas)',
     }}>
       <EditorTabs />
       <Breadcrumbs />
