@@ -11,7 +11,6 @@ import SearchPanel from '../Search/SearchPanel';
 import CommandPalette from '../CommandPalette/CommandPalette';
 import useTerminal from '../../hooks/useTerminal';
 import useFileTree from '../../hooks/useFileTree';
-import useNotifications from '../../hooks/useNotifications';
 import { useToast } from '../Toast/Toast';
 
 import {
@@ -180,7 +179,8 @@ const RunButton = ({ activeFile, isRunning, onRun, onStop }) => {
 /* ── Status info (reads EditorContext directly) ─────────────────────────── */
 const StatusInfo = () => {
   const { activeFile, cursorPosition, saveStatus } = useEditor();
-  const saveColors = { saving: '#79c0ff', saved: '#56d364', error: '#ffa198', idle: 'rgba(255,255,255,0.7)' };
+  // These colors must be legible on the blue status bar background
+  const saveColors = { saving: 'rgba(255,255,255,0.85)', saved: 'rgba(255,255,255,1)', error: '#ffa198', idle: 'rgba(255,255,255,0.7)' };
   const saveLabels = { saving: 'Saving…', saved: 'Saved ✓', error: 'Save failed', idle: '' };
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 11 }}>
@@ -224,7 +224,7 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
   const fileTree = useFileTree();
   const { activeFile } = useEditor();
   const { toast } = useToast();
-  useNotifications(); // Opens SSE connection to notification-service for real-time Drive events
+  // Note: SSE notification connection is managed by AuthContext — no need to open it here
 
   const [activePanel,         setActivePanel]         = useState('files');
   const [isSidebarCollapsed,  setIsSidebarCollapsed]  = useState(false);

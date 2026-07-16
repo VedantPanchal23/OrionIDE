@@ -42,10 +42,11 @@ const ProjectPicker = ({ onSelectProject, onCreateProject }) => {
   useEffect(() => { load(); }, [load]);
 
   const handleCreate = async () => {
-    if (!newName.trim()) return;
+    if (!newName.trim() || !rootFolderId) return;
     setCreating(true);
     try {
       await onCreateProject(rootFolderId, newName.trim());
+      setNewName(''); // Clear input on success
     } catch {
       setError('Failed to create project');
     }

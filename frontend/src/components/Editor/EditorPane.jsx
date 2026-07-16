@@ -3,8 +3,18 @@ import { useEditor } from '../../context/EditorContext';
 import EditorTabs from './EditorTabs';
 import Breadcrumbs from './Breadcrumbs';
 import Editor from './Editor';
+import StatusBar from './StatusBar';
 
 import { FileText, Search, Play, Terminal } from 'lucide-react';
+
+const SHORTCUTS = [
+  { action: 'Show All Commands', keys: 'Ctrl+Shift+P' },
+  { action: 'Go to File',        keys: 'Ctrl+P' },
+  { action: 'Find in Files',     keys: 'Ctrl+Shift+F' },
+  { action: 'Start Debugging',   keys: 'F5' },
+  { action: 'Toggle Terminal',   keys: 'Ctrl+`' },
+  { action: 'Toggle Sidebar',    keys: 'Ctrl+B' },
+];
 
 const EditorPane = () => {
   const { openFiles, activeFile } = useEditor();
@@ -17,14 +27,14 @@ const EditorPane = () => {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-      background: 'var(--bg-canvas)',
-      color: 'var(--text-secondary)',
+        background: 'var(--bg-canvas)',
+        color: 'var(--text-secondary)',
         fontFamily: 'var(--font-ui)',
         userSelect: 'none',
         position: 'relative',
         overflow: 'hidden',
       }}>
-        {/* VS Code Logo Watermark */}
+        {/* Orion IDE Logo Watermark */}
         <div style={{
           position: 'absolute',
           top: '50%',
@@ -40,26 +50,58 @@ const EditorPane = () => {
           </svg>
         </div>
 
-        <div style={{ zIndex: 1, textAlign: 'left', minWidth: 400 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 16, marginBottom: 8, fontSize: 13 }}>
-             <div style={{ color: '#cccccc' }}>Show All Commands</div>
-             <div style={{ color: '#858585' }}>Ctrl+Shift+P</div>
+        <div style={{ zIndex: 1, textAlign: 'left' }}>
+          {/* App title */}
+          <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-green))',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <FileText size={18} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.3px' }}>
+                Orion IDE
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>
+                Open a file to start editing
+              </div>
+            </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 16, marginBottom: 8, fontSize: 13 }}>
-             <div style={{ color: '#cccccc' }}>Go to File</div>
-             <div style={{ color: '#858585' }}>Ctrl+P</div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 16, marginBottom: 8, fontSize: 13 }}>
-             <div style={{ color: '#cccccc' }}>Find in Files</div>
-             <div style={{ color: '#858585' }}>Ctrl+Shift+F</div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 16, marginBottom: 8, fontSize: 13 }}>
-             <div style={{ color: '#cccccc' }}>Start Debugging</div>
-             <div style={{ color: '#858585' }}>F5</div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 16, marginBottom: 8, fontSize: 13 }}>
-             <div style={{ color: '#cccccc' }}>Toggle Terminal</div>
-             <div style={{ color: '#858585' }}>Ctrl+`</div>
+
+          {/* Keyboard shortcuts table */}
+          <div style={{
+            background: 'var(--bg-subtle)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-md)',
+            overflow: 'hidden',
+            minWidth: 360,
+          }}>
+            <div style={{
+              padding: '8px 14px', borderBottom: '1px solid var(--border-default)',
+              fontSize: 10, fontWeight: 600, color: 'var(--text-muted)',
+              textTransform: 'uppercase', letterSpacing: '0.5px',
+            }}>
+              Keyboard Shortcuts
+            </div>
+            {SHORTCUTS.map(({ action, keys }) => (
+              <div key={action} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '7px 14px',
+                borderBottom: '1px solid var(--border-default)',
+                fontSize: 12,
+              }}>
+                <span style={{ color: 'var(--text-primary)' }}>{action}</span>
+                <kbd style={{
+                  background: 'var(--bg-emphasis)', color: 'var(--text-secondary)',
+                  border: '1px solid var(--border-emphasis)', borderRadius: 4,
+                  padding: '2px 7px', fontSize: 11, fontFamily: 'var(--font-mono)',
+                }}>
+                  {keys}
+                </kbd>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -86,6 +128,7 @@ const EditorPane = () => {
           />
         )}
       </div>
+      <StatusBar />
     </div>
   );
 };
