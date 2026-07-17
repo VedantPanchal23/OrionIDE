@@ -9,6 +9,9 @@ import AgentPanel from '../AgentPanel/AgentPanel';
 import Settings from '../Settings/Settings';
 import SearchPanel from '../Search/SearchPanel';
 import CommandPalette from '../CommandPalette/CommandPalette';
+import MenuBar from './MenuBar';
+import GitPanel from '../Git/GitPanel';
+import RunDebugPanel from '../Run/RunDebugPanel';
 import useTerminal from '../../hooks/useTerminal';
 import useFileTree from '../../hooks/useFileTree';
 import { useToast } from '../Toast/Toast';
@@ -93,10 +96,12 @@ const menuBtnStyle = {
 };
 
 /* ── Sidebar content switcher ──────────────────────────────────────────── */
-const SidebarContent = ({ panel, tree, expandedFolders, isLoading, error, onToggleFolder, onCreateItem, onDeleteItem, onRenameItem, onRefresh }) => {
+const SidebarContent = ({ panel, tree, expandedFolders, isLoading, error, onToggleFolder, onCreateItem, onDeleteItem, onRenameItem, onRefresh, isRunning, onRun, onStop, lines }) => {
   if (panel === 'agent')    return <AgentPanel />;
   if (panel === 'settings') return <Settings />;
   if (panel === 'search')   return <SearchPanel tree={tree} />;
+  if (panel === 'git')      return <GitPanel />;
+  if (panel === 'run')      return <RunDebugPanel isRunning={isRunning} onRun={onRun} onStop={onStop} lines={lines} />;
   if (panel === 'files') {
     return (
       <FileTree
@@ -112,21 +117,7 @@ const SidebarContent = ({ panel, tree, expandedFolders, isLoading, error, onTogg
       />
     );
   }
-  const stubs = {
-    git: { emoji: '⎇', title: 'Source Control', desc: 'Git integration coming soon.' },
-    run: { emoji: '▶', title: 'Run & Debug', desc: 'Use the Run button in the toolbar.' },
-  };
-  const stub = stubs[panel];
-  return (
-    <div style={{
-      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 24, textAlign: 'center', flexDirection: 'column', gap: 8,
-    }}>
-      <div style={{ fontSize: 32, opacity: 0.2 }}>{stub?.emoji || '⚙'}</div>
-      <div style={{ fontSize: 'var(--font-size-md)', color: 'var(--text-secondary)', fontWeight: 500 }}>{stub?.title}</div>
-      <div style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-disabled)', lineHeight: 1.5 }}>{stub?.desc}</div>
-    </div>
-  );
+  return null;
 };
 
 /* ── Resize handles ────────────────────────────────────────────────────── */
@@ -238,15 +229,7 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
     if (projectId) fileTree.loadTree(projectId);
   }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* Keyboard shortcuts */
-  useEffect(() => {
-    const onKey = e => {
-      if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault(); setIsTerminalVisible(v => !v); }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'b') { e.preventDefault(); setIsSidebarCollapsed(v => !v); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+
 
   /* Handlers */
   const handleRun = useCallback(() => {
@@ -257,6 +240,19 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
   }, [activeFile, isRunning, runCode]);
 
   const handleStop = useCallback(() => stopExecution(), [stopExecution]);
+
+  /* Keyboard shortcuts — declared after handlers so deps are in scope */
+  useEffect(() => {
+    const onKey = e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault(); setIsTerminalVisible(v => !v); }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') { e.preventDefault(); setIsSidebarCollapsed(v => !v); }
+      if ((e.ctrlKey || e.metaKey) && e.key === ',') { e.preventDefault(); setActivePanel('settings'); setIsSidebarCollapsed(false); }
+      if (e.key === 'F5' && !e.shiftKey) { e.preventDefault(); handleRun(); }
+      if (e.key === 'F5' && e.shiftKey)  { e.preventDefault(); handleStop(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleRun, handleStop]);
 
   const handleNewTerminal = useCallback(() => {
     setIsTerminalVisible(true);
@@ -319,20 +315,17 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
         borderBottom: '1px solid var(--border-default)',
         flexShrink: 0, userSelect: 'none',
       }}>
-        {/* Left: menu labels */}
-        <div style={{ display: 'flex', alignItems: 'center', height: '100%', paddingLeft: 8 }}>
-          {['File', 'Edit', 'Selection', 'View', 'Go', 'Run', 'Terminal', 'Help'].map(item => (
-            <div key={item}
-              style={{
-                padding: '0 8px', height: '100%', display: 'flex', alignItems: 'center',
-                cursor: 'pointer', fontSize: 13, color: 'var(--text-secondary)',
-                transition: 'background var(--transition-fast)',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-emphasis)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-            >{item}</div>
-          ))}
-        </div>
+        {/* Left: working menu bar */}
+        <MenuBar
+          onToggleSidebar={() => setIsSidebarCollapsed(v => !v)}
+          onToggleTerminal={() => setIsTerminalVisible(v => !v)}
+          onNewTerminal={handleNewTerminal}
+          onOpenSettings={() => { setActivePanel('settings'); setIsSidebarCollapsed(false); }}
+          onRun={handleRun}
+          onStop={handleStop}
+          isRunning={isRunning}
+          onBackToProjects={onBackToProjects}
+        />
 
         {/* Center: nav + search pill + run */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -489,6 +482,10 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
                       onDeleteItem={handleDeleteItem}
                       onRenameItem={handleRenameItem}
                       onRefresh={fileTree.refreshTree}
+                      isRunning={isRunning}
+                      onRun={handleRun}
+                      onStop={handleStop}
+                      lines={lines}
                     />
                   </div>
                 </Panel>
