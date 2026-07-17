@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useEditor } from '../../context/EditorContext';
+import { useToast } from '../Toast/Toast';
 import { getLanguageFromFileName } from '../../utils/languageMap';
 import NewFileDialog from './NewFileDialog';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
@@ -287,8 +288,10 @@ const ActionButton = ({ title, onClick, children }) => {
 
 const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onCreateItem, onDeleteItem, onRenameItem, onRefresh }) => {
   const { openFile, activeFileId } = useEditor();
+  const { toast } = useToast();
   const [newFileDialog, setNewFileDialog] = useState({ open: false, parentId: null, type: 'file' });
   const [isHoveringHeader, setIsHoveringHeader] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const handleClickFile = useCallback((fileId, fileName) => {
     openFile(fileId, fileName);
@@ -324,6 +327,50 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
     if (ok) onDeleteItem(itemId, itemName);
   }, [onDeleteItem]);
 
+  /* Drag-and-drop OS file upload */
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e) => {
+    // Only leave if truly leaving the container
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback(async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+
+    if (!tree) return;
+    const files = Array.from(e.dataTransfer.files).filter(f => f.size < 5 * 1024 * 1024); // 5MB limit
+    if (files.length === 0) return;
+
+    let uploaded = 0;
+    for (const file of files) {
+      try {
+        const content = await file.text();
+        await onCreateItem(tree.id, file.name, 'file', content);
+        uploaded++;
+      } catch (err) {
+        toast({ type: 'error', title: 'Upload Failed', message: `Could not upload ${file.name}` });
+      }
+    }
+
+    if (uploaded > 0) {
+      toast({
+        type: 'success',
+        title: 'Files Uploaded',
+        message: `${uploaded} file${uploaded !== 1 ? 's' : ''} added to the project`,
+      });
+      onRefresh?.();
+    }
+  }, [tree, onCreateItem, onRefresh, toast]);
+
   if (isLoading && !tree) {
     return (
       <div style={{ padding: 8 }}>
@@ -357,7 +404,35 @@ const FileTree = ({ tree, expandedFolders, isLoading, error, onToggleFolder, onC
   return (
     <>
       <ConfirmModal ref={confirmRef} />
-      <div style={{ overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--bg-subtle)', userSelect: 'none' }}>
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        style={{
+          overflow: 'auto', flex: 1, display: 'flex', flexDirection: 'column',
+          background: isDragOver ? 'rgba(31, 111, 235, 0.06)' : 'var(--bg-subtle)',
+          userSelect: 'none', position: 'relative',
+          outline: isDragOver ? '2px dashed var(--accent-blue)' : 'none',
+          outlineOffset: -2,
+          transition: 'background var(--transition-fast)',
+        }}
+      >
+        {isDragOver && (
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', zIndex: 10, pointerEvents: 'none',
+          }}>
+            <div style={{
+              padding: '12px 20px', background: 'var(--accent-blue)',
+              borderRadius: 'var(--radius-md)', color: '#fff',
+              fontSize: 'var(--font-size-sm)', fontWeight: 600,
+              fontFamily: 'var(--font-ui)',
+              boxShadow: 'var(--shadow-md)',
+            }}>
+              Drop files to upload
+            </div>
+          </div>
+        )}
       {/* Workspace Header */}
       <div 
         onMouseEnter={() => setIsHoveringHeader(true)}
