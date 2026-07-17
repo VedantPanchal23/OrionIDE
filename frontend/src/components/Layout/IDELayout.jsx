@@ -244,11 +244,16 @@ const IDELayout = ({ projectId, projectName, onBackToProjects }) => {
   /* Keyboard shortcuts — declared after handlers so deps are in scope */
   useEffect(() => {
     const onKey = e => {
-      if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault(); setIsTerminalVisible(v => !v); }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'b') { e.preventDefault(); setIsSidebarCollapsed(v => !v); }
-      if ((e.ctrlKey || e.metaKey) && e.key === ',') { e.preventDefault(); setActivePanel('settings'); setIsSidebarCollapsed(false); }
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && e.key === '`' && !e.shiftKey) { e.preventDefault(); setIsTerminalVisible(v => !v); }
+      if (ctrl && e.key === '`' &&  e.shiftKey) { e.preventDefault(); setIsTerminalVisible(true); setTimeout(() => terminalPanelRef.current?.createNewTerminal(), 60); }
+      if (ctrl && e.key === 'b') { e.preventDefault(); setIsSidebarCollapsed(v => !v); }
+      if (ctrl && e.key === ',') { e.preventDefault(); setActivePanel('settings'); setIsSidebarCollapsed(false); }
+      if (ctrl && e.shiftKey && e.key === 'E') { e.preventDefault(); setActivePanel('files');  setIsSidebarCollapsed(false); }
+      if (ctrl && e.shiftKey && e.key === 'F') { e.preventDefault(); setActivePanel('search'); setIsSidebarCollapsed(false); }
+      if (ctrl && e.shiftKey && e.key === 'G') { e.preventDefault(); setActivePanel('git');    setIsSidebarCollapsed(false); }
       if (e.key === 'F5' && !e.shiftKey) { e.preventDefault(); handleRun(); }
-      if (e.key === 'F5' && e.shiftKey)  { e.preventDefault(); handleStop(); }
+      if (e.key === 'F5' &&  e.shiftKey) { e.preventDefault(); handleStop(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
