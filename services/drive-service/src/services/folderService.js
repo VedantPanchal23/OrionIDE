@@ -13,6 +13,7 @@
 
 const { MIME_TYPES } = require('./driveClient');
 const { getRedisClient } = require('./redisClient');
+const { driveApi } = require('./driveApi');
 const { createLogger } = require('../../../../shared/utils/logger');
 
 const logger = createLogger('drive-service');
@@ -44,11 +45,14 @@ const ensureOrionFolder = async (driveClient, userId) => {
   }
 
   // 2. Search Drive for existing OrionIDE/ folder
-  const searchResponse = await driveClient.files.list({
-    q: `name = '${ROOT_FOLDER_NAME}' and mimeType = '${MIME_TYPES.FOLDER}' and 'root' in parents and trashed = false`,
-    fields: 'files(id, name)',
-    spaces: 'drive',
-  });
+  const searchResponse = await driveApi(
+    () => driveClient.files.list({
+      q: `name = '${ROOT_FOLDER_NAME}' and mimeType = '${MIME_TYPES.FOLDER}' and 'root' in parents and trashed = false`,
+      fields: 'files(id, name)',
+      spaces: 'drive',
+    }),
+    'folders.searchRoot'
+  );
 
   let folderId;
 
@@ -57,14 +61,17 @@ const ensureOrionFolder = async (driveClient, userId) => {
     logger.info('Found existing OrionIDE folder', { userId, folderId });
   } else {
     // 3. Create new OrionIDE/ folder
-    const createResponse = await driveClient.files.create({
-      requestBody: {
-        name: ROOT_FOLDER_NAME,
-        mimeType: MIME_TYPES.FOLDER,
-        parents: ['root'],
-      },
-      fields: 'id, name',
-    });
+    const createResponse = await driveApi(
+      () => driveClient.files.create({
+        requestBody: {
+          name: ROOT_FOLDER_NAME,
+          mimeType: MIME_TYPES.FOLDER,
+          parents: ['root'],
+        },
+        fields: 'id, name',
+      }),
+      'folders.createRoot'
+    );
 
     folderId = createResponse.data.id;
     logger.info('Created OrionIDE folder', { userId, folderId });
@@ -89,13 +96,16 @@ const ensureOrionFolder = async (driveClient, userId) => {
  * @returns {Promise<Array>} Array of { id, name, mimeType, modifiedTime, size, parents }
  */
 const listFolder = async (driveClient, folderId) => {
-  const response = await driveClient.files.list({
-    q: `'${folderId}' in parents and trashed = false`,
-    fields: 'files(id, name, mimeType, modifiedTime, size, parents)',
-    orderBy: 'folder,name',
-    pageSize: 1000,
-    spaces: 'drive',
-  });
+  const response = await driveApi(
+    () => driveClient.files.list({
+      q: `'${folderId}' in parents and trashed = false`,
+      fields: 'files(id, name, mimeType, modifiedTime, size, parents, md5Checksum)',
+      orderBy: 'folder,name',
+      pageSize: 1000,
+      spaces: 'drive',
+    }),
+    'folders.list'
+  );
 
   return (response.data.files || []).map((file) => ({
     id: file.id,
@@ -105,6 +115,7 @@ const listFolder = async (driveClient, folderId) => {
     modifiedTime: file.modifiedTime,
     size: file.size ? parseInt(file.size, 10) : null,
     parents: file.parents || [],
+    md5Checksum: file.md5Checksum || null,
   }));
 };
 
@@ -117,20 +128,25 @@ const listFolder = async (driveClient, folderId) => {
  * @returns {Promise<{ id: string, name: string }>}
  */
 const createFolder = async (driveClient, parentId, name) => {
-  const response = await driveClient.files.create({
-    requestBody: {
-      name,
-      mimeType: MIME_TYPES.FOLDER,
-      parents: [parentId],
-    },
-    fields: 'id, name',
-  });
+  const response = await driveApi(
+    () => driveClient.files.create({
+      requestBody: {
+        name,
+        mimeType: MIME_TYPES.FOLDER,
+        parents: [parentId],
+      },
+      fields: 'id, name',
+    }),
+    'folders.create'
+  );
 
   logger.info('Folder created', { folderId: response.data.id, name, parentId });
 
   return {
     id: response.data.id,
     name: response.data.name,
+    mimeType: MIME_TYPES.FOLDER,
+    isFolder: true,
   };
 };
 
@@ -144,10 +160,13 @@ const createFolder = async (driveClient, parentId, name) => {
  * @returns {Promise<{ success: boolean }>}
  */
 const deleteFolder = async (driveClient, folderId) => {
-  await driveClient.files.update({
-    fileId: folderId,
-    requestBody: { trashed: true },
-  });
+  await driveApi(
+    () => driveClient.files.update({
+      fileId: folderId,
+      requestBody: { trashed: true },
+    }),
+    'folders.trash'
+  );
 
   logger.info('Folder deleted (trashed)', { folderId });
   return { success: true };

@@ -26,6 +26,8 @@ const { v4: uuidv4 } = require('uuid');
 const { createLogger } = require('../../../shared/utils/logger');
 const { configurePassport } = require('./services/googleService');
 const authRoutes = require('./routes/auth');
+const billingRoutes = require('./routes/billing');
+const { migrate } = require('./services/db');
 
 const logger = createLogger('auth-service');
 const app = express();
@@ -35,7 +37,14 @@ const PORT = process.env.PORT || 3001;
 app.use(helmet());
 app.use(cors(require('../../../shared/utils/corsConfig')));
 app.options('*', cors(require('../../../shared/utils/corsConfig')));
-app.use(express.json());
+// Capture raw body for Stripe webhooks
+app.use(express.json({
+  verify: (req, _res, buf) => {
+    if (req.originalUrl && req.originalUrl.includes('/billing/webhook')) {
+      req.rawBody = buf.toString('utf8');
+    }
+  },
+}));
 app.use(cookieParser());
 
 // Initialize Passport (no sessions â€” we use JWTs)
@@ -58,8 +67,9 @@ app.get('/health', (req, res) => {
   });
 });
 
-// â”€â”€ Auth Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ Auth + Billing Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use('/auth', authRoutes);
+app.use('/billing', billingRoutes);
 
 // â”€â”€ 404 Handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.use((req, res) => {
@@ -90,12 +100,16 @@ app.use((err, req, res, _next) => {
 
 // â”€â”€ Start Server â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
-    logger.info('Auth Service started', {
-      port: PORT,
-      env: process.env.NODE_ENV || 'development',
+  migrate()
+    .catch((err) => logger.warn('DB migrate skipped/failed', { error: err.message }))
+    .finally(() => {
+      app.listen(PORT, () => {
+        logger.info('Auth Service started', {
+          port: PORT,
+          env: process.env.NODE_ENV || 'development',
+        });
+      });
     });
-  });
 }
 
 module.exports = app;

@@ -7,6 +7,8 @@
  */
 
 const { createProxyMiddleware } = require('http-proxy-middleware');
+const { requireFeature } = require('../middleware/entitlements');
+const { flags } = require('../../../../shared/utils/featureFlags');
 
 const EDITOR_SERVICE_URL = process.env.EDITOR_SERVICE_URL || 'http://localhost:3003';
 
@@ -14,8 +16,11 @@ const editorProxy = createProxyMiddleware({
   target: EDITOR_SERVICE_URL,
   changeOrigin: true,
   ws: true, // Enable WebSocket proxying for real-time editor events
-  pathRewrite: {
-    '^/': '/editor/', // Express strips /api/editor, so /session/state → /editor/session/state
+  pathRewrite: (path) => {
+    // Keep /ws/* as-is (editor WebSocket listens on /ws/editor)
+    if (path.startsWith('/ws/') || path === '/ws') return path;
+    if (path.startsWith('/editor/') || path === '/editor') return path;
+    return `/editor${path.startsWith('/') ? path : `/${path}`}`;
   },
   on: {
     proxyReq: (proxyReq, req) => {
@@ -49,7 +54,21 @@ const editorProxy = createProxyMiddleware({
 });
 
 const mountEditorRoutes = (app) => {
-  app.use('/api/editor', editorProxy);
+  app.use('/api/editor', (req, res, next) => {
+    if (req.path.startsWith('/debug')) {
+      if (!flags().debuggerApi) {
+        return res.status(503).json({
+          error: {
+            code: 'DEBUGGER_DISABLED',
+            message: 'Debugger API is disabled until sync/auth are production-ready (set ENABLE_DEBUGGER_API=true)',
+            details: null,
+          },
+        });
+      }
+      return requireFeature('debugger')(req, res, next);
+    }
+    return next();
+  }, editorProxy);
 };
 
 module.exports = { mountEditorRoutes, editorProxy };

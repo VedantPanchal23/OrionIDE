@@ -163,21 +163,54 @@ if (process.env.NODE_ENV !== 'test') {
   });
 
   // Handle WebSocket upgrades — forward to the correct service proxy
-  const { terminalProxy } = require('./routes/terminal');
+  const { upgradeTerminalWebSocket } = require('./routes/terminal');
   const { editorProxy } = require('./routes/editor');
 
   server.on('upgrade', (req, socket, head) => {
     logger.info('WebSocket upgrade request', { url: req.url });
 
-    if (req.url.startsWith('/api/terminal')) {
-      // Strip the mount prefix — Express doesn't do this during upgrade
-      req.url = req.url.replace('/api/terminal', '') || '/';
-      terminalProxy.upgrade(req, socket, head);
-    } else if (req.url.startsWith('/api/editor')) {
-      req.url = req.url.replace('/api/editor', '') || '/';
-      editorProxy.upgrade(req, socket, head);
-    } else {
+    // Harden: reject malformed upgrades early (no open proxy for arbitrary WS)
+    if (!req.url || typeof req.url !== 'string') {
+      socket.write('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    try {
+      const upgradeUrl = new URL(req.url, 'http://localhost');
+
+      if (upgradeUrl.pathname.startsWith('/api/terminal')) {
+        upgradeTerminalWebSocket(req, socket, head, upgradeUrl);
+        return;
+      }
+
+      if (upgradeUrl.pathname.startsWith('/api/editor')) {
+        // Editor WS must carry JWT (?token=) — service verifies signature
+        const editorToken =
+          upgradeUrl.searchParams.get('token') ||
+          (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+        if (!editorToken) {
+          logger.warn('Rejected editor WebSocket upgrade — missing token');
+          socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+          socket.destroy();
+          return;
+        }
+
+        req.url = req.url.replace('/api/editor', '') || '/';
+        editorProxy.upgrade(req, socket, head);
+        return;
+      }
+
       logger.warn('Unknown WebSocket upgrade path', { url: req.url });
+      socket.write('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+    } catch (err) {
+      logger.error('WebSocket upgrade failed', { error: err.message });
+      try {
+        socket.write('HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n');
+      } catch {
+        // ignore
+      }
       socket.destroy();
     }
   });

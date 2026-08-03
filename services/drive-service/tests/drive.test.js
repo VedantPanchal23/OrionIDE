@@ -90,9 +90,13 @@ describe('Drive Client', () => {
     expect(google.drive).toHaveBeenCalledWith({ version: 'v3', auth: expect.any(Object) });
   });
 
-  test('createDriveClient throws without access token', () => {
-    expect(() => createDriveClient(null)).toThrow('Google access token is required');
-    expect(() => createDriveClient('')).toThrow('Google access token is required');
+  test('createDriveClient throws when token missing', () => {
+    expect(() => createDriveClient(null)).toThrow(/required/i);
+  });
+
+  test('createDriveClient rejects mock/dev tokens', () => {
+    expect(() => createDriveClient('mock-token')).toThrow(/not allowed/i);
+    expect(() => createDriveClient('dev-token')).toThrow(/not allowed/i);
   });
 
   test('getMimeType detects JavaScript files', () => {
@@ -359,7 +363,7 @@ describe('Drive Routes — Validation', () => {
     expect(res.body.service).toBe('drive-service');
   });
 
-  test('routes require user context (X-User-Id header)', async () => {
+  test('routes reject requests without auth headers', async () => {
     const res = await request(app)
       .get('/drive/projects')
       .expect(401);

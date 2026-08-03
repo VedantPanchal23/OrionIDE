@@ -105,12 +105,20 @@ const extractUserProfile = (profile, accessToken, refreshToken) => {
  */
 const ensureOrionFolder = async (googleAccessToken, userId) => {
   try {
+    const serviceSecret = process.env.INTERNAL_SECRET || process.env.DRIVE_SERVICE_SECRET || '';
     await axios.post(
       `${DRIVE_SERVICE_URL}/drive/ensure-root`,
-      { googleAccessToken },
+      {},
       {
         headers: {
           'X-User-Id': userId,
+          'X-Google-Access-Token': googleAccessToken,
+          ...(serviceSecret
+            ? {
+                'X-Internal-Secret': serviceSecret,
+                'X-Orion-Service-Secret': serviceSecret,
+              }
+            : {}),
           'Content-Type': 'application/json',
         },
         timeout: 10000,
@@ -122,6 +130,7 @@ const ensureOrionFolder = async (googleAccessToken, userId) => {
     logger.warn('Failed to ensure OrionIDE folder (non-fatal)', {
       userId,
       error: err.message,
+      status: err.response?.status,
     });
   }
 };

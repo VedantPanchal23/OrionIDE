@@ -1,19 +1,16 @@
 /**
  * Orion IDE — API Gateway Rate Limiting
  *
- * Three tiers of rate limiting using express-rate-limit:
- *   1. Global:   100 requests per minute per IP
- *   2. Auth:     10 requests per minute per IP (login/callback abuse protection)
- *   3. Execute:  10 requests per minute per authenticated user
- *
- * Standard error format used for 429 responses.
+ * Tiers:
+ *   1. Global:        300 req/min per IP (IDE makes many concurrent calls)
+ *   2. Auth start:    30 req/min — Google OAuth kickoff only (abuse protection)
+ *   3. Auth session:  120 req/min — exchange/refresh/me/logout/callback (login must not fail)
+ *   4. Execute:       20 req/min per user
+ *   5. Agent:         10 req/min per user
  */
 
 const rateLimit = require('express-rate-limit');
 
-/**
- * Standard 429 handler that conforms to Orion's error response format.
- */
 const rateLimitHandler = (req, res) => {
   res.status(429).json({
     error: {
@@ -26,82 +23,91 @@ const rateLimitHandler = (req, res) => {
   });
 };
 
+const clientKey = (req) => req.ip || req.headers['x-forwarded-for'] || 'unknown';
+
+const userOrIpKey = (req) => {
+  if (req.user && (req.user.id || req.user.userId)) {
+    return `user:${req.user.id || req.user.userId}`;
+  }
+  return clientKey(req);
+};
+
 /**
- * Global rate limiter — 100 requests per minute per IP.
- * Applied to all routes as baseline protection.
+ * Global baseline — IDE UI fires many parallel API calls (tree, tabs, terminal, run).
+ * Dev default is higher so Strict Mode remount + explorer fan-out don't 429 the shell.
  */
 const globalLimiter = rateLimit({
-  windowMs: 60 * 1000,        // 1 minute
-  max: 100,                    // 100 requests per window per IP
-  standardHeaders: true,       // Return RateLimit-* headers
-  legacyHeaders: false,        // Disable X-RateLimit-* headers
-  keyGenerator: (req) => {
-    // Use X-Forwarded-For behind a reverse proxy, fall back to IP
-    return req.ip || req.headers['x-forwarded-for'] || 'unknown';
-  },
+  windowMs: 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_GLOBAL)
+    || (process.env.NODE_ENV === 'production' ? 300 : 1200),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: clientKey,
   handler: rateLimitHandler,
-  skip: (req) => req.path === '/health', // Don't rate-limit health checks
+  skip: (req) => {
+    const p = req.path || req.originalUrl || '';
+    if (p === '/health' || p.endsWith('/health')) return true;
+    // Terminal WS upgrades + session keepalive should not burn the global budget
+    if (p.includes('/terminal/ws') || p.includes('/editor/ws')) return true;
+    return false;
+  },
 });
 
 /**
- * Auth route limiter — 10 requests per minute per IP.
- * Applied to /api/auth/* to prevent login/callback abuse.
+ * Strict limiter only for starting OAuth (credential stuffing / redirect spam).
+ * Mounted only on GET /api/auth/google — NOT on exchange/refresh/callback.
+ */
+const authStartLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_AUTH_START) || 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: clientKey,
+  handler: rateLimitHandler,
+});
+
+/**
+ * Session auth limiter — login handoff must succeed even after a few retries.
+ * Covers /api/auth/* except paths already covered by authStartLimiter when composed.
  */
 const authLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
+  max: Number(process.env.RATE_LIMIT_AUTH) || 120,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    return req.ip || req.headers['x-forwarded-for'] || 'unknown';
-  },
+  keyGenerator: clientKey,
   handler: rateLimitHandler,
-  message: 'Too many authentication attempts',
+  // Don't burn the login budget on failed silent refresh storms
+  skip: (req) => {
+    const p = req.path || '';
+    // Allow high volume for refresh — AuthContext mounts fire this often in React Strict Mode
+    if (req.method === 'POST' && (p === '/refresh' || p.endsWith('/refresh'))) return true;
+    return false;
+  },
 });
 
-/**
- * Execution route limiter — 10 requests per minute per authenticated user.
- * Applied to /api/execute/* to prevent execution abuse.
- * Falls back to IP-based limiting if no user is attached.
- */
 const executeLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
+  max: Number(process.env.RATE_LIMIT_EXECUTE) || 20,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    // Use authenticated user ID if available, otherwise fall back to IP
-    if (req.user && (req.user.id || req.user.userId)) {
-      return `user:${req.user.id || req.user.userId}`;
-    }
-    return req.ip || req.headers['x-forwarded-for'] || 'unknown';
-  },
+  keyGenerator: userOrIpKey,
   handler: rateLimitHandler,
-  message: 'Too many code execution requests',
 });
 
-/**
- * Agent pipeline limiter — 5 requests per minute per user.
- * Applied to /api/agents/* to prevent LLM abuse.
- */
 const agentLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 5,
+  max: Number(process.env.RATE_LIMIT_AGENT) || 10,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    if (req.user && (req.user.id || req.user.userId)) {
-      return `user:${req.user.id || req.user.userId}`;
-    }
-    return req.ip || req.headers['x-forwarded-for'] || 'unknown';
-  },
+  keyGenerator: userOrIpKey,
   handler: rateLimitHandler,
-  message: 'Too many agent pipeline requests',
 });
 
 module.exports = {
   globalLimiter,
   authLimiter,
+  authStartLimiter,
   executeLimiter,
   agentLimiter,
 };

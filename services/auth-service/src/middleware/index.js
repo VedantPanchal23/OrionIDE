@@ -1,11 +1,5 @@
 /**
- * Orion IDE — Auth Service Middleware
- * 
- * Middleware specific to auth-service routes.
- * 
- * Will be implemented in a future task.
+ * Auth-service middleware — reserved for future auth-specific hooks.
+ * Gateway performs JWT validation; this package stays intentionally thin.
  */
-
-// TODO: Implement auth-specific middleware
-
 module.exports = {};

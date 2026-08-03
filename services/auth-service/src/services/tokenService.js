@@ -7,8 +7,10 @@
  *   Access token  — short-lived (15m), signed with JWT_SECRET
  *   Refresh token — long-lived (7d), signed with JWT_REFRESH_SECRET, stored in Redis
  *
- * Token payload shape:
- *   { userId, email, name, picture, googleAccessToken, jti }
+ * Token payload shape (identity only — never Google secrets):
+ *   { userId, email, name, picture, jti, type }
+ *
+ * Google OAuth tokens live in Redis (see sessionStore.js), not in JWTs.
  *
  * Redis key pattern:
  *   auth:refresh:{userId}:{tokenHash}  — TTL matches token expiry
@@ -42,6 +44,7 @@ const hashToken = (token) => {
 
 /**
  * Build the standardized JWT payload from a user object.
+ * Intentionally excludes Google tokens — those are server-side only.
  * @param {object} user
  * @returns {object} payload
  */
@@ -50,12 +53,11 @@ const buildPayload = (user) => ({
   email: user.email,
   name: user.name || user.displayName,
   picture: user.picture || user.photos?.[0]?.value || null,
-  googleAccessToken: user.googleAccessToken || null,
 });
 
 /**
  * Generate a short-lived access token.
- * @param {object} user — { userId, email, name, picture, googleAccessToken }
+ * @param {object} user — { userId, email, name, picture }
  * @returns {string} JWT access token
  */
 const generateAccessToken = (user) => {
@@ -216,6 +218,33 @@ const revokeAllRefreshTokens = async (redisClient, userId) => {
   logger.info('All refresh tokens revoked', { userId, count: deleted });
 };
 
+/**
+ * Deny an access token by jti until natural expiry.
+ * Key: auth:deny:{jti}
+ *
+ * @param {object} redisClient
+ * @param {string} jti
+ * @param {number} [exp] — unix seconds expiry from JWT; defaults to 15m
+ */
+const denyAccessJti = async (redisClient, jti, exp) => {
+  if (!jti) return;
+  const now = Math.floor(Date.now() / 1000);
+  const ttl = exp && exp > now ? exp - now : 15 * 60;
+  await redisClient.set(`auth:deny:${jti}`, '1', { EX: ttl });
+  logger.debug('Access jti denied', { jti, ttl });
+};
+
+/**
+ * @param {object} redisClient
+ * @param {string} jti
+ * @returns {Promise<boolean>}
+ */
+const isAccessJtiDenied = async (redisClient, jti) => {
+  if (!jti) return false;
+  const exists = await redisClient.exists(`auth:deny:${jti}`);
+  return exists === 1;
+};
+
 module.exports = {
   generateAccessToken,
   generateRefreshToken,
@@ -225,6 +254,8 @@ module.exports = {
   isRefreshTokenValid,
   revokeRefreshToken,
   revokeAllRefreshTokens,
+  denyAccessJti,
+  isAccessJtiDenied,
   hashToken,
   buildPayload,
   // Exported for testing

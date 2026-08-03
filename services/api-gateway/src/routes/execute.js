@@ -8,6 +8,7 @@
 
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const { executeLimiter } = require('../middleware/rateLimit');
+const { requireExecuteQuota } = require('../middleware/entitlements');
 
 const EXECUTION_SERVICE_URL = process.env.EXECUTION_SERVICE_URL || 'http://localhost:3004';
 
@@ -56,7 +57,12 @@ const executeProxy = createProxyMiddleware({
 });
 
 const mountExecuteRoutes = (app) => {
-  app.use('/api/execute', executeLimiter, executeProxy);
+  app.use('/api/execute', executeLimiter, (req, res, next) => {
+    if (req.method === 'POST' && (req.path === '/' || req.path === '')) {
+      return requireExecuteQuota(req, res, next);
+    }
+    return next();
+  }, executeProxy);
 };
 
 module.exports = { mountExecuteRoutes };

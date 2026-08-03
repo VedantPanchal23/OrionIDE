@@ -28,6 +28,11 @@ const driveProxy = createProxyMiddleware({
           proxyReq.setHeader('X-Google-Access-Token', req.user.googleAccessToken);
         }
       }
+      const secret = process.env.INTERNAL_SECRET || process.env.DRIVE_SERVICE_SECRET;
+      if (secret) {
+        proxyReq.setHeader('X-Internal-Secret', secret);
+        proxyReq.setHeader('X-Orion-Service-Secret', secret);
+      }
     },
     error: (err, req, res) => {
       res.status(502).json({

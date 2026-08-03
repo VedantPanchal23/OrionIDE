@@ -8,6 +8,8 @@
 
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const { agentLimiter } = require('../middleware/rateLimit');
+const { requireAgentQuota, requireFeature } = require('../middleware/entitlements');
+const { flags } = require('../../../../shared/utils/featureFlags');
 
 const AGENT_SERVICE_URL = process.env.AGENT_SERVICE_URL || 'http://localhost:3005';
 
@@ -57,7 +59,27 @@ const agentsProxy = createProxyMiddleware({
 });
 
 const mountAgentRoutes = (app) => {
-  app.use('/api/agents', agentLimiter, agentsProxy);
+  app.use('/api/agents', agentLimiter, (req, res, next) => {
+    const f = flags();
+    if (!f.agents) {
+      return res.status(503).json({
+        error: {
+          code: 'AGENTS_DISABLED',
+          message: 'Agent pipeline is temporarily disabled',
+          details: null,
+        },
+      });
+    }
+    return next();
+  }, (req, res, next) => {
+    // Pro-tier feature gate for all agent routes
+    return requireFeature('agents')(req, res, next);
+  }, (req, res, next) => {
+    if (req.method === 'POST' && req.path === '/pipeline/start') {
+      return requireAgentQuota(req, res, next);
+    }
+    return next();
+  }, agentsProxy);
 };
 
 module.exports = { mountAgentRoutes };

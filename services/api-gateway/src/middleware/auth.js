@@ -23,12 +23,16 @@ const PUBLIC_ROUTES = [
   { method: 'GET', path: '/api/auth/google' },
   { method: 'GET', path: '/api/auth/google/callback' },
   { method: 'POST', path: '/api/auth/google/callback' },
+  { method: 'POST', path: '/api/auth/exchange' },
   { method: 'POST', path: '/api/auth/refresh' },
   { method: 'POST', path: '/api/auth/logout' },
   { method: 'GET', path: '/api/auth/validate' },
-  { method: 'GET', path: '/api/auth/dev-login' },
+  { method: 'GET', path: '/api/billing/plans' },
+  { method: 'POST', path: '/api/billing/webhook' },
   { method: 'GET', path: '/health' },
 ];
+
+const SERVICE_SECRET = process.env.INTERNAL_SECRET || process.env.DRIVE_SERVICE_SECRET || '';
 
 /**
  * Check if the current request matches a public (unauthenticated) route.
@@ -45,18 +49,30 @@ const isPublicRoute = (req) => {
 };
 
 /**
- * Extract Bearer token from the Authorization header.
+ * Extract JWT from Authorization Bearer header, or ?token= for EventSource/SSE.
  * @param {import('express').Request} req
  * @returns {string|null}
  */
 const extractToken = (req) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader) return null;
+  if (authHeader) {
+    const parts = authHeader.split(' ');
+    if (parts.length === 2 && parts[0] === 'Bearer' && parts[1]) {
+      return parts[1];
+    }
+  }
 
-  const parts = authHeader.split(' ');
-  if (parts.length !== 2 || parts[0] !== 'Bearer') return null;
+  // EventSource cannot set Authorization headers — allow query token for SSE streams
+  const queryToken = req.query?.token;
+  if (typeof queryToken === 'string' && queryToken.length > 0) {
+    const isStreamPath =
+      req.path.includes('/stream') ||
+      req.path.startsWith('/api/notifications') ||
+      req.path.startsWith('/api/execute/');
+    if (isStreamPath) return queryToken;
+  }
 
-  return parts[1];
+  return null;
 };
 
 /**
@@ -74,21 +90,6 @@ const authMiddleware = async (req, res, next) => {
 
   const token = extractToken(req);
 
-  // ── Development bypass: no token required in dev mode ──────────────
-  const isDev = process.env.NODE_ENV !== 'production';
-  if (!token && isDev) {
-    req.user = {
-      id: 'dev-user-123',
-      userId: 'dev-user-123',
-      email: 'dev@orion.ide',
-      googleAccessToken: 'dev-token',
-    };
-    req.headers['x-user-id'] = 'dev-user-123';
-    req.headers['x-user-email'] = 'dev@orion.ide';
-    req.headers['x-google-access-token'] = 'dev-token';
-    return next();
-  }
-
   if (!token) {
     return res.status(401).json({
       error: {
@@ -100,13 +101,24 @@ const authMiddleware = async (req, res, next) => {
   }
 
   try {
-    // Validate token against auth-service
-    const response = await axios.get(`${AUTH_SERVICE_URL}/auth/validate`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      timeout: 5000,
-    });
+    let response;
+    let lastErr;
+    // Brief retry — auth-service nodemon restarts / brief blips shouldn't 503 the whole API
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        response = await axios.get(`${AUTH_SERVICE_URL}/auth/validate`, {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 5000,
+        });
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (err.response) break; // auth rejected — don't retry
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+      }
+    }
+    if (lastErr) throw lastErr;
 
     const user = response.data.data;
 
@@ -118,6 +130,10 @@ const authMiddleware = async (req, res, next) => {
     req.headers['x-user-email'] = user.email;
     if (user.googleAccessToken) {
       req.headers['x-google-access-token'] = user.googleAccessToken;
+    }
+    if (SERVICE_SECRET) {
+      req.headers['x-internal-secret'] = SERVICE_SECRET;
+      req.headers['x-orion-service-secret'] = SERVICE_SECRET;
     }
 
     return next();

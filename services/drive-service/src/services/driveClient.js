@@ -2,12 +2,12 @@
  * Orion IDE — Drive Client Factory
  *
  * Creates authenticated Google Drive API v3 clients.
- * Each request gets its own client using the user's Google access token
- * (extracted from the JWT by the API Gateway).
+ * Production SaaS: real Google tokens only — no mock/dev clients.
  */
 
 const { google } = require('googleapis');
-const { createMockDriveClient } = require('./mockDrive');
+
+const BANNED_TOKENS = new Set(['mock-token', 'dev-token', 'dev-google-token']);
 
 /**
  * Create an authenticated Google Drive API v3 client.
@@ -16,13 +16,16 @@ const { createMockDriveClient } = require('./mockDrive');
  * @returns {import('googleapis').drive_v3.Drive} Drive API client
  */
 const createDriveClient = (googleAccessToken) => {
-  // In development mode, auto-default to mock drive if no token provided
-  const isDev = process.env.NODE_ENV !== 'production';
-  if (!googleAccessToken || googleAccessToken === 'mock-token' || googleAccessToken === 'dev-token') {
-    if (!isDev && !googleAccessToken) {
-      throw new Error('Google access token is required to create Drive client');
-    }
-    return createMockDriveClient();
+  if (!googleAccessToken || typeof googleAccessToken !== 'string') {
+    const err = new Error('Google access token is required');
+    err.code = 'DRIVE_NO_TOKEN';
+    throw err;
+  }
+
+  if (BANNED_TOKENS.has(googleAccessToken)) {
+    const err = new Error('Mock/dev Google tokens are not allowed');
+    err.code = 'DRIVE_MOCK_TOKEN_FORBIDDEN';
+    throw err;
   }
 
   const auth = new google.auth.OAuth2();

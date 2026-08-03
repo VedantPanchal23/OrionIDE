@@ -23,28 +23,43 @@ const { ensureOrionFolder, listFolder, createFolder, deleteFolder, ensurePath } 
 const { createFile, readFile, updateFile, deleteFile, renameFile, getMetadata } = require('../services/fileService');
 const { addToBuffer, flushImmediate } = require('../services/writeBuffer');
 const { createLogger } = require('../../../../shared/utils/logger');
+const { publishEvent } = require('../../../../shared/utils/notify');
+const { EVENT_TYPES } = require('../../../../shared/constants/events');
 
 const logger = createLogger('drive-service');
 const router = express.Router();
 
-// ── Middleware: extract Google access token and user info ─────────────────
-const extractUserContext = (req, res, next) => {
-  req.userId = req.headers['x-user-id'];
-  req.userEmail = req.headers['x-user-email'];
-  req.googleAccessToken = req.headers['x-google-access-token'] || req.body?.googleAccessToken;
+const notifyDrive = (type, userId, payload) => {
+  if (!userId) return;
+  publishEvent({ type, userId, payload }).catch(() => {});
+};
 
-  // In development mode, auto-provide defaults when no auth headers present
-  const isDev = process.env.NODE_ENV !== 'production';
-  if (isDev) {
-    if (!req.userId) req.userId = 'dev-user-123';
-    if (!req.googleAccessToken) req.googleAccessToken = 'dev-token';
+// ── Middleware: extract Google access token and user info ─────────────────
+// Tokens only from gateway headers — never from request body (spoofable).
+const extractUserContext = (req, res, next) => {
+  const serviceSecret = process.env.DRIVE_SERVICE_SECRET || process.env.INTERNAL_SECRET;
+  if (serviceSecret) {
+    const provided = req.headers['x-internal-secret'] || req.headers['x-orion-service-secret'];
+    if (provided !== serviceSecret) {
+      return res.status(403).json({
+        error: {
+          code: 'DRIVE_FORBIDDEN',
+          message: 'Missing or invalid service secret',
+          details: null,
+        },
+      });
+    }
   }
 
-  if (!req.userId && !req.googleAccessToken) {
+  req.userId = req.headers['x-user-id'];
+  req.userEmail = req.headers['x-user-email'];
+  req.googleAccessToken = req.headers['x-google-access-token'];
+
+  if (!req.userId || !req.googleAccessToken) {
     return res.status(401).json({
       error: {
         code: 'DRIVE_NO_AUTH',
-        message: 'Missing user context or Google access token',
+        message: 'Missing X-User-Id or X-Google-Access-Token header',
         details: null,
       },
     });
@@ -56,10 +71,7 @@ const extractUserContext = (req, res, next) => {
 router.use(extractUserContext);
 
 // ── Helper: create Drive client from request context ──────────────────────
-const getDriveFromReq = (req) => {
-  // createDriveClient handles dev-token → mock automatically
-  return createDriveClient(req.googleAccessToken || null);
-};
+const getDriveFromReq = (req) => createDriveClient(req.googleAccessToken);
 
 
 // ── Helper: standard success response ────────────────────────────────────
@@ -146,12 +158,34 @@ router.post('/files', async (req, res) => {
     const driveClient = getDriveFromReq(req);
 
     if (type === 'folder') {
+      const existing = await listFolder(driveClient, parentFolderId);
+      const clash = existing.find(
+        (item) => item.isFolder && item.name.toLowerCase() === String(name).toLowerCase()
+      );
+      if (clash) {
+        return error(res, 'DRIVE_NAME_EXISTS', `A folder named "${name}" already exists here`, 409);
+      }
       const folder = await createFolder(driveClient, parentFolderId, name);
+      notifyDrive(EVENT_TYPES.FOLDER_CREATED, req.userId, { folderId: folder.id, name, parentFolderId });
       return success(res, folder, 201);
     }
 
-    // Default: create file
-    const file = await createFile(driveClient, parentFolderId, name, content || '');
+    // Default: create file — reject same-name siblings (Drive allows them; Orion does not)
+    {
+      const existing = await listFolder(driveClient, parentFolderId);
+      const clash = existing.find(
+        (item) => !item.isFolder && item.name.toLowerCase() === String(name).toLowerCase()
+      );
+      if (clash) {
+        return error(res, 'DRIVE_NAME_EXISTS', `A file named "${name}" already exists here`, 409);
+      }
+    }
+    let fileContent = content || '';
+    if (req.body.encoding === 'base64' && typeof fileContent === 'string') {
+      fileContent = Buffer.from(fileContent, 'base64');
+    }
+    const file = await createFile(driveClient, parentFolderId, name, fileContent);
+    notifyDrive(EVENT_TYPES.FILE_CREATED, req.userId, { fileId: file.id, name, parentFolderId });
     success(res, file, 201);
   } catch (err) {
     logger.error('create file/folder failed', { userId: req.userId, error: err.message });
@@ -182,6 +216,19 @@ router.get('/files/*', async (req, res) => {
     if (err.code === 404) {
       return error(res, 'DRIVE_FILE_NOT_FOUND', 'File not found', 404);
     }
+    if (err.code === 400) {
+      return error(res, 'DRIVE_READ_ERROR', err.message || 'Cannot read this file', 400);
+    }
+    const msg = String(err.message || '');
+    if (msg.includes('fileNotDownloadable') || msg.includes('Only files with binary content')) {
+      return error(
+        res,
+        'DRIVE_NOT_EDITABLE',
+        'This Google Docs/Sheets file cannot be opened as source code. Export it as plain text first, or open a .py/.js/.ts file instead.',
+        422,
+        msg
+      );
+    }
     logger.error('read file failed', { fileId: extractFileId(req), error: err.message });
     error(res, 'DRIVE_READ_ERROR', 'Failed to read file', 500, err.message);
   }
@@ -195,13 +242,19 @@ router.get('/files/*', async (req, res) => {
 router.put(/^\/files\/(.+)\/flush$/, async (req, res) => {
   try {
     const fileId = req.params[0];
-    const { content } = req.body;
+    let { content, encoding } = req.body;
 
     if (content === undefined || content === null) {
       return error(res, 'DRIVE_MISSING_PARAM', 'content is required', 400);
     }
 
+    if (encoding === 'base64' && typeof content === 'string') {
+      content = Buffer.from(content, 'base64');
+    }
+
     const result = await flushImmediate(req.userId, fileId, content, req.googleAccessToken);
+
+    notifyDrive(EVENT_TYPES.FILE_SAVED, req.userId, { fileId, flushed: true });
 
     success(res, {
       fileId: result.id,
@@ -210,6 +263,7 @@ router.put(/^\/files\/(.+)\/flush$/, async (req, res) => {
       message: 'Content written to Drive immediately',
     });
   } catch (err) {
+    notifyDrive(EVENT_TYPES.FILE_SAVE_ERROR, req.userId, { fileId: req.params[0], message: err.message });
     logger.error('immediate flush failed', { fileId: req.params[0], error: err.message });
     error(res, 'DRIVE_FLUSH_ERROR', 'Failed to write to Drive', 500, err.message);
   }
@@ -230,6 +284,8 @@ router.put('/files/*', async (req, res) => {
     }
 
     await addToBuffer(req.userId, fileId, content, req.googleAccessToken);
+
+    notifyDrive(EVENT_TYPES.FILE_UPDATED, req.userId, { fileId, buffered: true });
 
     success(res, {
       fileId,
@@ -258,6 +314,7 @@ router.patch(/^\/files\/(.+)\/rename$/, async (req, res) => {
 
     const driveClient = getDriveFromReq(req);
     const result = await renameFile(driveClient, fileId, newName);
+    notifyDrive(EVENT_TYPES.FILE_RENAMED, req.userId, { fileId, newName });
     success(res, result);
   } catch (err) {
     logger.error('rename failed', { fileId: req.params[0], error: err.message });
@@ -282,6 +339,7 @@ router.delete('/files/*', async (req, res) => {
       await deleteFile(driveClient, fileId);
     }
 
+    notifyDrive(EVENT_TYPES.FILE_DELETED, req.userId, { fileId });
     success(res, { deleted: true, id: fileId });
   } catch (err) {
     if (err.code === 404) {

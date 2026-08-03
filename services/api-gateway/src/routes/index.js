@@ -12,6 +12,8 @@ const { mountExecuteRoutes } = require('./execute');
 const { mountAgentRoutes } = require('./agents');
 const { mountNotificationRoutes } = require('./notifications');
 const { mountTerminalRoutes } = require('./terminal');
+const { mountGitRoutes } = require('./git');
+const { mountBillingRoutes } = require('./billing');
 
 /**
  * Mount all downstream service routes on the app.
@@ -20,12 +22,14 @@ const { mountTerminalRoutes } = require('./terminal');
  */
 const mountAllRoutes = (app) => {
   mountAuthRoutes(app);           // /api/auth/*           → auth-service:3001
+  mountBillingRoutes(app);        // /api/billing/*        → auth-service:3001/billing
   mountDriveRoutes(app);          // /api/drive/*          → drive-service:3002
   mountEditorRoutes(app);         // /api/editor/*         → editor-service:3003
   mountExecuteRoutes(app);        // /api/execute/*        → execution-service:3004
   mountAgentRoutes(app);          // /api/agents/*         → agent-service:3005
   mountNotificationRoutes(app);   // /api/notifications/*  → notification-service:3006
   mountTerminalRoutes(app);       // /api/terminal/*       → terminal-service:3007
+  mountGitRoutes(app);            // /api/git/*            → terminal-service:3007/git
 };
 
 module.exports = { mountAllRoutes };

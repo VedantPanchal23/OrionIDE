@@ -3,16 +3,19 @@
  *
  * Endpoints:
  *   GET  /auth/google           → Initiates Google OAuth flow
- *   GET  /auth/google/callback  → Google OAuth callback, issues tokens
+ *   GET  /auth/google/callback  → Google OAuth callback, issues one-time code
+ *   POST /auth/exchange         → Exchange one-time code for access JWT
  *   POST /auth/refresh          → Refresh access token using httpOnly refresh cookie
- *   POST /auth/logout           → Revoke refresh token, clear cookie
+ *   POST /auth/logout           → Revoke refresh token, clear cookie + Google tokens
  *   GET  /auth/me               → Get current user info from access token
- *   GET  /auth/validate         → Validates token (used by API Gateway)
+ *   GET  /auth/validate         → Validates token (used by API Gateway); attaches Google token from Redis
  *
- * Security:
- *   - Refresh token stored in httpOnly, SameSite=Strict cookie
- *   - Access token returned in response body (stored in memory by frontend)
- *   - All tokens have jti (JWT ID) for revocation capability
+ * Security (production SaaS):
+ *   - JWTs carry identity only — never Google OAuth secrets
+ *   - Google tokens stored in Redis, keyed by userId
+ *   - OAuth redirect uses a one-time code (not ?token= JWT in the URL)
+ *   - Refresh token stored in httpOnly, SameSite cookie
+ *   - Access token returned in response body (memory / sessionStorage by frontend)
  */
 
 const express = require('express');
@@ -26,9 +29,23 @@ const {
   storeRefreshToken,
   revokeRefreshToken,
   isRefreshTokenValid,
+  denyAccessJti,
+  isAccessJtiDenied,
 } = require('../services/tokenService');
+const {
+  storeGoogleAccessToken,
+  storeGoogleRefreshToken,
+  clearGoogleTokens,
+  createAuthCode,
+  exchangeAuthCode,
+  resolveGoogleAccessToken,
+} = require('../services/sessionStore');
 const { ensureOrionFolder } = require('../services/googleService');
 const { getRedisClient } = require('../services/redisClient');
+const { publishEvent } = require('../../../../shared/utils/notify');
+const { EVENT_TYPES } = require('../../../../shared/constants/events');
+const { upsertUser, getUserById, updateProfile } = require('../services/userService');
+const { getEntitlements } = require('../services/billingService');
 
 const logger = createLogger('auth-service');
 const router = express.Router();
@@ -52,6 +69,38 @@ const COOKIE_OPTIONS = {
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
 };
 
+/**
+ * Complete a successful login: issue JWTs, store secrets in Redis, redirect with one-time code.
+ */
+const completeLoginRedirect = async (res, user) => {
+  const redis = await getRedisClient();
+
+  const accessToken = generateAccessToken(user);
+  const refreshToken = generateRefreshToken(user);
+
+  await storeRefreshToken(redis, user.userId, refreshToken);
+  await storeGoogleAccessToken(redis, user.userId, user.googleAccessToken);
+  if (user.googleRefreshToken) {
+    await storeGoogleRefreshToken(redis, user.userId, user.googleRefreshToken);
+  }
+
+  // Persist identity in Postgres (best-effort)
+  upsertUser({
+    userId: user.userId,
+    email: user.email,
+    name: user.name,
+    picture: user.picture,
+  }).catch((err) => logger.warn('User upsert failed', { error: err.message }));
+
+  res.cookie(COOKIE_NAME, refreshToken, COOKIE_OPTIONS);
+
+  // Non-blocking Drive bootstrap
+  ensureOrionFolder(user.googleAccessToken, user.userId).catch(() => {});
+
+  const code = await createAuthCode(redis, accessToken, user.userId);
+  return res.redirect(`${FRONTEND_URL}/auth/success?code=${encodeURIComponent(code)}`);
+};
+
 // ─────────────────────────────────────────────────────────────────────────
 // GET /auth/google — Initiate Google OAuth flow
 // ─────────────────────────────────────────────────────────────────────────
@@ -68,12 +117,6 @@ router.get('/google', passport.authenticate('google', {
 
 // ─────────────────────────────────────────────────────────────────────────
 // GET /auth/google/callback — Google OAuth callback
-//
-// On success:
-//   1. Generate access + refresh tokens
-//   2. Store refresh token in Redis
-//   3. Set refresh token as httpOnly cookie
-//   4. Redirect to frontend with access token in URL param
 // ─────────────────────────────────────────────────────────────────────────
 router.get('/google/callback',
   passport.authenticate('google', { session: false, failureRedirect: `${FRONTEND_URL}/login?error=auth_failed` }),
@@ -85,36 +128,12 @@ router.get('/google/callback',
         return res.redirect(`${FRONTEND_URL}/login?error=no_user`);
       }
 
-      // Generate tokens
-      const accessToken = generateAccessToken(user);
-      const refreshToken = generateRefreshToken(user);
-
-      // Store refresh token in Redis
-      const redis = await getRedisClient();
-      await storeRefreshToken(redis, user.userId, refreshToken);
-
-      // Set refresh token as httpOnly cookie
-      res.cookie(COOKIE_NAME, refreshToken, COOKIE_OPTIONS);
-
-      // Store Google refresh token in Redis for later token refresh
-      if (user.googleRefreshToken) {
-        await redis.set(
-          `google:refresh:${user.userId}`,
-          user.googleRefreshToken,
-          { EX: 30 * 24 * 60 * 60 } // 30 days
-        );
-      }
-
-      // Ensure OrionIDE folder exists (fire and forget — non-blocking)
-      ensureOrionFolder(user.googleAccessToken, user.userId).catch(() => {});
-
       logger.info('User authenticated via Google OAuth', {
         userId: user.userId,
         email: user.email,
       });
 
-      // Redirect to frontend with access token (frontend stores in memory)
-      return res.redirect(`${FRONTEND_URL}/auth/success?token=${encodeURIComponent(accessToken)}`);
+      return completeLoginRedirect(res, user);
     } catch (err) {
       logger.error('OAuth callback error', { error: err.message, stack: err.stack });
       return res.redirect(`${FRONTEND_URL}/login?error=server_error`);
@@ -123,10 +142,91 @@ router.get('/google/callback',
 );
 
 // ─────────────────────────────────────────────────────────────────────────
-// POST /auth/refresh — Refresh access token
+// POST /auth/exchange — One-time code → access JWT
 //
-// Reads refresh token from httpOnly cookie.
-// Validates against Redis, issues new access token.
+// Frontend lands on /auth/success?code=... and POSTs here.
+// Code is single-use and expires in ~90s. Never logs the code or JWT.
+// ─────────────────────────────────────────────────────────────────────────
+router.post('/exchange', async (req, res) => {
+  try {
+    const code = req.body?.code;
+
+    if (!code || typeof code !== 'string') {
+      return res.status(400).json({
+        error: {
+          code: 'AUTH_CODE_REQUIRED',
+          message: 'Auth code is required',
+          details: null,
+        },
+      });
+    }
+
+    let redis;
+    try {
+      redis = await getRedisClient();
+    } catch (redisErr) {
+      logger.error('Redis unavailable for auth exchange', { error: redisErr.message });
+      return res.status(503).json({
+        error: {
+          code: 'SERVICE_UNAVAILABLE',
+          message: 'Authentication service temporarily unavailable',
+          details: null,
+        },
+      });
+    }
+
+    const exchanged = await exchangeAuthCode(redis, code);
+
+    if (!exchanged?.accessToken) {
+      return res.status(401).json({
+        error: {
+          code: 'AUTH_CODE_INVALID',
+          message: 'Auth code is invalid, expired, or already used',
+          details: null,
+        },
+      });
+    }
+
+    // Verify the embedded access JWT is still valid before handing it out
+    try {
+      verifyAccessToken(exchanged.accessToken);
+    } catch (err) {
+      return res.status(401).json({
+        error: {
+          code: err.code || 'AUTH_INVALID',
+          message: err.message || 'Invalid access token',
+          details: null,
+        },
+      });
+    }
+
+    logger.info('Auth code exchanged', { userId: exchanged.userId });
+
+    publishEvent({
+      type: EVENT_TYPES.USER_LOGGED_IN,
+      userId: exchanged.userId,
+      payload: {},
+    }).catch(() => {});
+
+    return res.json({
+      data: {
+        accessToken: exchanged.accessToken,
+      },
+    });
+  } catch (err) {
+    logger.error('Auth code exchange error', { error: err.message });
+    return res.status(500).json({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to exchange auth code',
+        details: null,
+      },
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// POST /auth/refresh — Refresh access token
 // ─────────────────────────────────────────────────────────────────────────
 router.post('/refresh', async (req, res) => {
   try {
@@ -142,12 +242,10 @@ router.post('/refresh', async (req, res) => {
       });
     }
 
-    // Verify the JWT signature and expiry
     let decoded;
     try {
       decoded = verifyRefreshToken(refreshToken);
     } catch (err) {
-      // Clear the invalid cookie
       res.clearCookie(COOKIE_NAME, { ...COOKIE_OPTIONS, maxAge: 0 });
       return res.status(401).json({
         error: {
@@ -158,7 +256,6 @@ router.post('/refresh', async (req, res) => {
       });
     }
 
-    // Verify the token exists in Redis (not revoked)
     const redis = await getRedisClient();
     const isValid = await isRefreshTokenValid(redis, decoded.userId, refreshToken);
 
@@ -173,36 +270,14 @@ router.post('/refresh', async (req, res) => {
       });
     }
 
-    // Refresh the Google access token using stored Google refresh token
-    let freshGoogleToken = decoded.googleAccessToken;
-    try {
-      const googleRefreshToken = await redis.get(`google:refresh:${decoded.userId}`);
-      if (googleRefreshToken) {
-        const { google } = require('googleapis');
-        const oauth2Client = new google.auth.OAuth2(
-          process.env.GOOGLE_CLIENT_ID,
-          process.env.GOOGLE_CLIENT_SECRET,
-        );
-        oauth2Client.setCredentials({ refresh_token: googleRefreshToken });
-        const { credentials } = await oauth2Client.refreshAccessToken();
-        freshGoogleToken = credentials.access_token;
-        logger.debug('Google access token refreshed', { userId: decoded.userId });
-      }
-    } catch (refreshErr) {
-      logger.warn('Could not refresh Google access token (non-fatal)', {
-        userId: decoded.userId,
-        error: refreshErr.message,
-      });
-      // Non-fatal: use existing token (works for up to 1 hour from last login)
-    }
+    // Renew Google access token in Redis (identity JWT stays slim)
+    await resolveGoogleAccessToken(redis, decoded.userId);
 
-    // Issue new access token with fresh Google access token
     const newAccessToken = generateAccessToken({
       userId: decoded.userId,
       email: decoded.email,
       name: decoded.name,
       picture: decoded.picture,
-      googleAccessToken: freshGoogleToken,
     });
 
     logger.info('Access token refreshed', { userId: decoded.userId });
@@ -225,25 +300,57 @@ router.post('/refresh', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// POST /auth/logout — Revoke refresh token and clear cookie
+// POST /auth/logout — Revoke refresh + access jti, clear cookie + Google tokens
 // ─────────────────────────────────────────────────────────────────────────
 router.post('/logout', async (req, res) => {
   try {
+    const redis = await getRedisClient();
     const refreshToken = req.cookies?.[COOKIE_NAME];
+    const accessToken = extractBearerToken(req);
+    let userId = null;
+
+    if (accessToken) {
+      try {
+        const decoded = verifyAccessToken(accessToken);
+        userId = decoded.userId;
+        await denyAccessJti(redis, decoded.jti, decoded.exp);
+      } catch {
+        // Expired/invalid access token — still clear refresh/cookie
+        try {
+          const jwt = require('jsonwebtoken');
+          const loose = jwt.decode(accessToken);
+          if (loose?.jti) {
+            await denyAccessJti(redis, loose.jti, loose.exp);
+            userId = loose.userId || userId;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
 
     if (refreshToken) {
       try {
         const decoded = verifyRefreshToken(refreshToken);
-        const redis = await getRedisClient();
+        userId = decoded.userId || userId;
         await revokeRefreshToken(redis, decoded.userId, refreshToken);
-        logger.info('User logged out', { userId: decoded.userId });
+        await clearGoogleTokens(redis, decoded.userId);
       } catch {
-        // Token might be expired — just clear the cookie
         logger.debug('Logout with invalid/expired refresh token');
       }
+    } else if (userId) {
+      await clearGoogleTokens(redis, userId).catch(() => {});
     }
 
-    // Always clear the cookie
+    if (userId) {
+      logger.info('User logged out', { userId });
+      publishEvent({
+        type: EVENT_TYPES.USER_LOGGED_OUT,
+        userId,
+        payload: {},
+      }).catch(() => {});
+    }
+
     res.clearCookie(COOKIE_NAME, { ...COOKIE_OPTIONS, maxAge: 0 });
 
     return res.json({
@@ -264,9 +371,9 @@ router.post('/logout', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// GET /auth/me — Get current user info from access token
+// GET /auth/me — Get current user info (+ plan/preferences when DB available)
 // ─────────────────────────────────────────────────────────────────────────
-router.get('/me', (req, res) => {
+router.get('/me', async (req, res) => {
   try {
     const token = extractBearerToken(req);
 
@@ -281,20 +388,102 @@ router.get('/me', (req, res) => {
     }
 
     const decoded = verifyAccessToken(token);
+    let profile = {
+      userId: decoded.userId,
+      email: decoded.email,
+      name: decoded.name,
+      picture: decoded.picture,
+    };
 
-    return res.json({
-      data: {
-        userId: decoded.userId,
-        email: decoded.email,
-        name: decoded.name,
-        picture: decoded.picture,
-      },
-    });
+    try {
+      const dbUser = await getUserById(decoded.userId);
+      if (dbUser) {
+        profile = {
+          ...profile,
+          name: dbUser.name || profile.name,
+          picture: dbUser.picture || profile.picture,
+          preferences: dbUser.preferences,
+          planId: dbUser.planId,
+          createdAt: dbUser.createdAt,
+        };
+      }
+      profile.entitlements = await getEntitlements(decoded.userId);
+    } catch {
+      // DB optional
+    }
+
+    return res.json({ data: profile });
   } catch (err) {
     return res.status(401).json({
       error: {
         code: err.code || 'AUTH_INVALID',
         message: err.message || 'Invalid or expired token',
+        details: null,
+      },
+    });
+  }
+});
+
+// GET /auth/profile — Return user profile (same data as validate, without googleAccessToken)
+router.get('/profile', async (req, res) => {
+  try {
+    const token = extractBearerToken(req);
+    if (!token) {
+      return res.status(401).json({
+        error: { code: 'AUTH_INVALID', message: 'No authentication token provided', details: null },
+      });
+    }
+    const decoded = verifyAccessToken(token);
+    let profile = {
+      userId: decoded.userId,
+      email: decoded.email,
+      name: decoded.name,
+      picture: decoded.picture,
+    };
+    try {
+      const dbUser = await getUserById(decoded.userId);
+      if (dbUser) {
+        profile = {
+          ...profile,
+          name: dbUser.name || profile.name,
+          picture: dbUser.picture || profile.picture,
+          preferences: dbUser.preferences,
+          planId: dbUser.planId,
+          createdAt: dbUser.createdAt,
+        };
+      }
+      profile.entitlements = await getEntitlements(decoded.userId);
+    } catch { /* DB optional */ }
+    return res.json({ data: profile });
+  } catch (err) {
+    return res.status(401).json({
+      error: { code: err.code || 'AUTH_INVALID', message: err.message || 'Invalid or expired token', details: null },
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// PATCH /auth/profile — Update display name / preferences (requires Postgres)
+// ─────────────────────────────────────────────────────────────────────────
+router.patch('/profile', async (req, res) => {
+  try {
+    const token = extractBearerToken(req);
+    if (!token) {
+      return res.status(401).json({
+        error: { code: 'AUTH_INVALID', message: 'No authentication token provided', details: null },
+      });
+    }
+    const decoded = verifyAccessToken(token);
+    const updated = await updateProfile(decoded.userId, {
+      name: req.body?.name,
+      preferences: req.body?.preferences,
+    });
+    return res.json({ data: updated });
+  } catch (err) {
+    return res.status(err.status || 500).json({
+      error: {
+        code: err.code || 'INTERNAL_ERROR',
+        message: err.message || 'Profile update failed',
         details: null,
       },
     });
@@ -304,10 +493,9 @@ router.get('/me', (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────
 // GET /auth/validate — Validate token (used by API Gateway)
 //
-// API Gateway calls this on every request to verify the JWT.
-// Returns decoded user payload or 401.
+// Returns identity + Google access token from Redis for Drive forwarding.
 // ─────────────────────────────────────────────────────────────────────────
-router.get('/validate', (req, res) => {
+router.get('/validate', async (req, res) => {
   try {
     const token = extractBearerToken(req);
 
@@ -322,6 +510,37 @@ router.get('/validate', (req, res) => {
     }
 
     const decoded = verifyAccessToken(token);
+    const redis = await getRedisClient();
+
+    if (await isAccessJtiDenied(redis, decoded.jti)) {
+      return res.status(401).json({
+        error: {
+          code: 'AUTH_TOKEN_REVOKED',
+          message: 'Access token has been revoked',
+          details: null,
+        },
+      });
+    }
+
+    let googleAccessToken = null;
+    try {
+      googleAccessToken = await resolveGoogleAccessToken(redis, decoded.userId);
+    } catch (redisErr) {
+      logger.warn('Could not resolve Google access token during validate', {
+        userId: decoded.userId,
+        error: redisErr.message,
+      });
+    }
+
+    let planId = null;
+    let entitlements = null;
+    try {
+      const dbUser = await getUserById(decoded.userId);
+      planId = dbUser?.planId || null;
+      entitlements = await getEntitlements(decoded.userId);
+    } catch {
+      // optional
+    }
 
     return res.json({
       data: {
@@ -330,7 +549,9 @@ router.get('/validate', (req, res) => {
         email: decoded.email,
         name: decoded.name,
         picture: decoded.picture,
-        googleAccessToken: decoded.googleAccessToken,
+        googleAccessToken,
+        planId,
+        entitlements,
       },
     });
   } catch (err) {
@@ -341,48 +562,6 @@ router.get('/validate', (req, res) => {
         details: null,
       },
     });
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────────
-// GET /auth/dev-login — Developer mock login bypass
-// ─────────────────────────────────────────────────────────────────────────
-router.get('/dev-login', async (req, res) => {
-  try {
-    const user = {
-      userId: 'dev-user-123',
-      email: 'developer@orion.dev',
-      name: 'Developer Mode',
-      picture: 'https://api.dicebear.com/7.x/bottts/svg?seed=Developer',
-      googleAccessToken: 'mock-token',
-      googleRefreshToken: 'mock-refresh-token',
-      provider: 'google',
-    };
-
-    // Generate tokens
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
-
-    // Store refresh token in Redis
-    const redis = await getRedisClient();
-    await storeRefreshToken(redis, user.userId, refreshToken);
-
-    // Set refresh token as httpOnly cookie
-    res.cookie(COOKIE_NAME, refreshToken, COOKIE_OPTIONS);
-
-    // Ensure OrionIDE folder exists (mock-token will trigger local mock directories)
-    ensureOrionFolder(user.googleAccessToken, user.userId).catch(() => {});
-
-    logger.info('Developer logged in bypass mode', {
-      userId: user.userId,
-      email: user.email,
-    });
-
-    // Redirect to frontend auth success page
-    return res.redirect(`${FRONTEND_URL}/auth/success?token=${encodeURIComponent(accessToken)}`);
-  } catch (err) {
-    logger.error('Dev login error', { error: err.message, stack: err.stack });
-    return res.redirect(`${FRONTEND_URL}/login?error=server_error`);
   }
 });
 
