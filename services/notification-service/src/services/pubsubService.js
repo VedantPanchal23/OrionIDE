@@ -34,6 +34,24 @@ const subscribe = async (channel, handler) => {
 };
 
 /**
+ * Pattern-subscribe (e.g. notif:*) for cross-instance fan-out.
+ * @param {string} pattern
+ * @param {(message: object, channel: string) => void} handler
+ */
+const psubscribe = async (pattern, handler) => {
+  const subscriber = await getSubscriberClient();
+  await subscriber.pSubscribe(pattern, (message, channel) => {
+    try {
+      const parsed = JSON.parse(message);
+      handler(parsed, channel);
+    } catch {
+      handler({ type: 'RAW', payload: message }, channel);
+    }
+  });
+  logger.info('Pattern-subscribed', { pattern });
+};
+
+/**
  * Publish an event to a Redis Pub/Sub channel.
  * @param {string} channel
  * @param {object} event — { type, userId, payload }
@@ -63,4 +81,4 @@ const publishBroadcast = async (event) => {
   await publish('notif:broadcast', event);
 };
 
-module.exports = { subscribe, publish, publishToUser, publishBroadcast };
+module.exports = { subscribe, psubscribe, publish, publishToUser, publishBroadcast };

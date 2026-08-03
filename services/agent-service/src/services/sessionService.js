@@ -15,12 +15,13 @@ const SESSION_TTL = 86400; // 24 hours
 /**
  * Create a new pipeline session.
  */
-const createSession = async (userId, goal) => {
+const createSession = async (userId, goal, options = {}) => {
   const sessionId = uuidv4();
   const session = {
     sessionId,
     userId,
     goal,
+    googleAccessToken: options.googleAccessToken || null,
     projectName: null,
     currentStep: 1,
     status: 'running',

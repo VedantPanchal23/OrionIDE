@@ -2,7 +2,7 @@
  * Orion IDE — Groq LLM Service
  *
  * Interfaces with the Groq API for fast LLM inference.
- * Uses llama-3.3-70b-versatile and llama3-8b-8192 models.
+ * Uses llama-3.3-70b-versatile and llama-3.1-8b-instant models.
  */
 
 const Groq = require('groq-sdk');
@@ -22,7 +22,7 @@ const createClient = () => {
 /**
  * Send a chat completion request to Groq.
  *
- * @param {string} model — 'llama-3.3-70b-versatile' or 'llama3-8b-8192'
+ * @param {string} model — 'llama-3.3-70b-versatile' or 'llama-3.1-8b-instant'
  * @param {Array<{role: string, content: string}>} messages
  * @param {object} [options] — { temperature, maxTokens, jsonMode }
  * @returns {Promise<string>} — completion text

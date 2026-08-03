@@ -8,10 +8,16 @@ RUN npm ci --only=production && cp -R node_modules /prod_modules
 FROM node:18-alpine AS runner
 ENV NODE_ENV=production
 WORKDIR /app
+
+# Python + debugpy for DAP (Python adapter)
+RUN apk add --no-cache python3 py3-pip \
+  && pip3 install --no-cache-dir --break-system-packages debugpy \
+  || pip3 install --no-cache-dir debugpy
+
 RUN addgroup -S orion && adduser -S orion -G orion -h /home/orion
 COPY --from=builder /prod_modules ./node_modules
 COPY src/ ./src/
-RUN chown -R orion:orion /app
+RUN mkdir -p /workspace && chown -R orion:orion /workspace /app
 USER orion
 EXPOSE 3003
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \

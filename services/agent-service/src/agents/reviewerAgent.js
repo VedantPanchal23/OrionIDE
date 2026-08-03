@@ -14,7 +14,8 @@ const SYSTEM_PROMPT = `You are the Reviewer agent for Orion IDE. Review the prov
 
 class ReviewerAgent extends BaseAgent {
   constructor() {
-    super('Reviewer', 'llama3-8b-8192', 'groq');
+    // Groq deprecated llama3-8b-8192; use a currently supported smaller model.
+    super('Reviewer', 'llama-3.1-8b-instant', 'groq');
   }
 
   getSystemPrompt() {

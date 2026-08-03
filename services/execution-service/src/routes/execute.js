@@ -17,7 +17,13 @@ const logger = createLogger('execution-service');
 const router = express.Router();
 
 router.use((req, res, next) => {
-  req.userId = req.headers['x-user-id'] || 'anonymous';
+  const userId = req.headers['x-user-id'];
+  if (!userId) {
+    return res.status(401).json({
+      error: { code: 'AUTH_REQUIRED', message: 'Missing X-User-Id header', details: null },
+    });
+  }
+  req.userId = userId;
   next();
 });
 
@@ -88,8 +94,26 @@ router.get('/languages', async (req, res) => {
 });
 
 // GET /execute/:executionId/stream — SSE
-router.get('/:executionId/stream', (req, res) => {
-  streamResult(res, req.params.executionId);
+router.get('/:executionId/stream', async (req, res) => {
+  try {
+    const result = await getResult(req.params.executionId);
+    if (!result) {
+      return res.status(404).json({
+        error: { code: 'EXEC_NOT_FOUND', message: 'Execution not found', details: null },
+      });
+    }
+    if (result.userId && result.userId !== req.userId) {
+      return res.status(403).json({
+        error: { code: 'EXEC_FORBIDDEN', message: 'Not your execution', details: null },
+      });
+    }
+    streamResult(res, req.params.executionId);
+  } catch (err) {
+    logger.error('Stream failed', { error: err.message });
+    res.status(500).json({
+      error: { code: 'INTERNAL_ERROR', message: err.message, details: null },
+    });
+  }
 });
 
 // GET /execute/:executionId/result — polling
@@ -101,7 +125,14 @@ router.get('/:executionId/result', async (req, res) => {
         error: { code: 'EXEC_NOT_FOUND', message: 'Execution not found', details: null },
       });
     }
-    res.json({ data: result });
+    if (result.userId && result.userId !== req.userId) {
+      return res.status(403).json({
+        error: { code: 'EXEC_FORBIDDEN', message: 'Not your execution', details: null },
+      });
+    }
+    // Never leak another user's identity fields beyond what's needed
+    const { userId, ...safe } = result;
+    res.json({ data: { ...safe, userId: undefined } });
   } catch (err) {
     logger.error('Get result failed', { error: err.message });
     res.status(500).json({

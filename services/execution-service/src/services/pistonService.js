@@ -2,7 +2,7 @@
  * Orion IDE — Piston Execution Service
  *
  * Interfaces with the Piston code execution API.
- * Now uses the shared language registry for all 18 languages.
+ * Production SaaS: requires an explicit self-hosted Piston URL (no public fallback).
  */
 
 const axios = require('axios');
@@ -12,10 +12,23 @@ const { createLogger } = require('../../../../shared/utils/logger');
 
 const logger = createLogger('execution-service');
 
-const PISTON_URL = process.env.PISTON_API_URL || process.env.PISTON_URL || 'https://emkc.org/api/v2/piston';
 const RUN_TIMEOUT = 30000;
 const RUNTIMES_CACHE_KEY = 'exec:runtimes';
 const RUNTIMES_CACHE_TTL = 21600; // 6 hours
+
+/**
+ * Resolve Piston base URL. Never falls back to public third-party APIs.
+ */
+const resolvePistonUrl = () => {
+  const url = process.env.PISTON_API_URL || process.env.PISTON_URL;
+  if (!url) {
+    throw Object.assign(
+      new Error('PISTON_API_URL is required — public execution fallbacks are disabled'),
+      { code: 'EXEC_PISTON_MISCONFIGURED' }
+    );
+  }
+  return url.replace(/\/$/, '');
+};
 
 /**
  * Execute code via Piston.
@@ -27,6 +40,8 @@ const RUNTIMES_CACHE_TTL = 21600; // 6 hours
  * @returns {Promise<{ stdout, stderr, exitCode, time, timedOut, language, version }>}
  */
 const execute = async (languageId, fileName, code, stdin = '') => {
+  const PISTON_URL = resolvePistonUrl();
+
   // Support both language ID and raw piston language name
   let lang = getById(languageId);
   if (!lang) lang = getByPistonId(languageId);
@@ -75,6 +90,8 @@ const execute = async (languageId, fileName, code, stdin = '') => {
  * Get available runtimes from Piston. Cached in Redis for 6 hours.
  */
 const getLanguages = async () => {
+  const PISTON_URL = resolvePistonUrl();
+
   try {
     const redis = await getRedisClient();
     const cached = await redis.get(RUNTIMES_CACHE_KEY);
@@ -146,4 +163,5 @@ module.exports = {
   isLanguageAvailable,
   getLanguagesWithStatus,
   resolveLanguage,
+  resolvePistonUrl,
 };

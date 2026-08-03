@@ -4,6 +4,6 @@
 const { validateEnv } = require('../../../../shared/utils/validateEnv');
 
 module.exports = () => validateEnv('notification-service',
-  ['REDIS_URL'],
+  ['REDIS_URL', 'INTERNAL_SECRET'],
   [],
 );

@@ -17,7 +17,8 @@ const SYSTEM_PROMPT = `You are the Run Agent for Orion IDE. Determine the correc
 
 class RunAgent extends BaseAgent {
   constructor() {
-    super('RunAgent', 'llama3-8b-8192', 'groq');
+    // Groq deprecated llama3-8b-8192; use a currently supported model.
+    super('RunAgent', 'llama-3.1-8b-instant', 'groq');
   }
 
   getSystemPrompt() {
@@ -100,18 +101,27 @@ class RunAgent extends BaseAgent {
 
       const executionId = res.data?.data?.executionId;
 
-      // Wait briefly for execution to complete, then fetch result
-      await new Promise((r) => setTimeout(r, 3000));
-
+      // Poll execution result until finished (up to ~30 s)
       let result;
-      try {
-        const resultRes = await axios.get(`${EXECUTION_SERVICE_URL}/execute/${executionId}/result`, {
-          headers: { 'X-User-Id': userId },
-          timeout: 10000,
-        });
-        result = resultRes.data?.data;
-      } catch {
-        result = { executionId, status: 'pending' };
+      const MAX_POLLS = 10;
+      const POLL_INTERVAL = 3000;
+      for (let i = 0; i < MAX_POLLS; i++) {
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+        try {
+          const resultRes = await axios.get(`${EXECUTION_SERVICE_URL}/execute/${executionId}/result`, {
+            headers: { 'X-User-Id': userId },
+            timeout: 10000,
+          });
+          result = resultRes.data?.data;
+          if (result && result.status !== 'running' && result.exitCode !== undefined && result.exitCode !== null) {
+            break;
+          }
+        } catch {
+          // not ready yet
+        }
+      }
+      if (!result) {
+        result = { executionId, status: 'timeout' };
       }
 
       await this.notifyStatus(sessionId, 'complete', {

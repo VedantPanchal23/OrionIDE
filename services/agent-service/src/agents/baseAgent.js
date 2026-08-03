@@ -12,7 +12,11 @@ const { createLogger } = require('../../../../shared/utils/logger');
 const logger = createLogger('agent-service');
 
 const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3006';
-const INTERNAL_SECRET = process.env.INTERNAL_SECRET || 'orion-internal-secret-dev';
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
+if (!INTERNAL_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('INTERNAL_SECRET is required in production');
+}
+const RESOLVED_INTERNAL_SECRET = INTERNAL_SECRET || 'orion-internal-secret-dev';
 
 class BaseAgent {
   constructor(agentName, model, provider = 'groq') {
@@ -79,15 +83,27 @@ class BaseAgent {
 
   /**
    * Publish a status update to the notification service.
+   * Resolves userId from the pipeline session when not provided in payload.
    */
   async notifyStatus(sessionId, status, payload = {}) {
+    let userId = payload.userId || null;
+    if (!userId && sessionId) {
+      try {
+        const { getSession } = require('../services/sessionService');
+        const session = await getSession(sessionId);
+        userId = session?.userId || null;
+      } catch {
+        // best-effort
+      }
+    }
+
     try {
       await axios.post(`${NOTIFICATION_URL}/notifications/publish`, {
         type: 'AGENT_STATUS_CHANGE',
-        userId: payload.userId || null,
+        userId,
         payload: { sessionId, agent: this.agentName, status, ...payload },
       }, {
-        headers: { 'X-Internal-Secret': INTERNAL_SECRET },
+        headers: { 'X-Internal-Secret': RESOLVED_INTERNAL_SECRET },
         timeout: 5000,
       });
     } catch {

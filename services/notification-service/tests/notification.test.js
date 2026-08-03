@@ -104,6 +104,13 @@ describe('Notification Routes', () => {
     expect(res.body.data.sent).toBe(1);
   });
 
+  test('GET /notifications/stream requires X-User-Id header (not ?userId=)', async () => {
+    const res = await request(app)
+      .get('/notifications/stream?userId=spoofed-user')
+      .expect(401);
+    expect(res.body.error.code).toBe('NOTIF_NO_AUTH');
+  });
+
   test('GET /notifications/stream requires userId', async () => {
     const res = await request(app)
       .get('/notifications/stream')

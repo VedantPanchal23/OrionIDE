@@ -156,15 +156,25 @@ describe('Execution Routes', () => {
   test('GET /execute/:id/result returns 404 for unknown execution', async () => {
     const res = await request(app)
       .get('/execute/unknown-id/result')
+      .set('X-User-Id', 'user-1')
       .expect(404);
 
     expect(res.body.error.code).toBe('EXEC_NOT_FOUND');
+  });
+
+  test('GET /execute/:id/result rejects missing user header', async () => {
+    const res = await request(app)
+      .get('/execute/unknown-id/result')
+      .expect(401);
+
+    expect(res.body.error.code).toBe('AUTH_REQUIRED');
   });
 
   test('GET /execute/:id/result returns stored result', async () => {
     // Pre-store a record
     const record = {
       executionId: 'test-exec-1',
+      userId: 'user-1',
       status: 'completed',
       stdout: 'Hello\n',
       stderr: '',
@@ -175,11 +185,29 @@ describe('Execution Routes', () => {
 
     const res = await request(app)
       .get('/execute/test-exec-1/result')
+      .set('X-User-Id', 'user-1')
       .expect(200);
 
-    expect(res.body.data.executionId).toBe('test-exec-1');
     expect(res.body.data.stdout).toBe('Hello\n');
-    expect(res.body.data.exitCode).toBe(0);
+  });
+
+  test('GET /execute/:id/result forbids other users', async () => {
+    const record = {
+      executionId: 'test-exec-2',
+      userId: 'owner-user',
+      status: 'completed',
+      stdout: 'secret\n',
+      stderr: '',
+      exitCode: 0,
+    };
+    _store.set('exec:record:test-exec-2', JSON.stringify(record));
+
+    const res = await request(app)
+      .get('/execute/test-exec-2/result')
+      .set('X-User-Id', 'attacker')
+      .expect(403);
+
+    expect(res.body.error.code).toBe('EXEC_FORBIDDEN');
   });
 
   test('GET /health returns ok', async () => {

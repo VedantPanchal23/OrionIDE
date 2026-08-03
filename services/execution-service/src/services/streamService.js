@@ -17,6 +17,8 @@ const { v4: uuidv4 } = require('uuid');
 const { getRedisClient } = require('./redisClient');
 const { execute, resolveLanguage } = require('./pistonService');
 const { createLogger } = require('../../../../shared/utils/logger');
+const { publishEvent } = require('../../../../shared/utils/notify');
+const { EVENT_TYPES } = require('../../../../shared/constants/events');
 
 const logger = createLogger('execution-service');
 
@@ -87,6 +89,12 @@ const createExecution = async (userId, language, fileName, code, stdin) => {
   const redis = await getRedisClient();
   await redis.set(`${RECORD_PREFIX}${executionId}`, JSON.stringify(record), { EX: RECORD_TTL });
 
+  publishEvent({
+    type: EVENT_TYPES.EXECUTION_STARTED,
+    userId,
+    payload: { executionId, language: resolved.pistonLanguage, fileName },
+  }).catch(() => {});
+
   // Create event queue for SSE
   activeStreams.set(executionId, []);
 
@@ -123,6 +131,21 @@ const createExecution = async (userId, language, fileName, code, stdin) => {
 
       await redis.set(`${RECORD_PREFIX}${executionId}`, JSON.stringify(record), { EX: RECORD_TTL });
 
+      const eventType = result.timedOut
+        ? EVENT_TYPES.EXECUTION_TIMEOUT
+        : EVENT_TYPES.EXECUTION_COMPLETE;
+      publishEvent({
+        type: eventType,
+        userId,
+        payload: {
+          executionId,
+          language: resolved.pistonLanguage,
+          exitCode: result.exitCode,
+          time: result.time,
+          timedOut: result.timedOut,
+        },
+      }).catch(() => {});
+
       logger.info('Execution completed', {
         executionId,
         language: resolved.pistonLanguage,
@@ -138,6 +161,12 @@ const createExecution = async (userId, language, fileName, code, stdin) => {
       record.exitCode = -1;
 
       await redis.set(`${RECORD_PREFIX}${executionId}`, JSON.stringify(record), { EX: RECORD_TTL }).catch(() => {});
+
+      publishEvent({
+        type: EVENT_TYPES.EXECUTION_FAILED,
+        userId,
+        payload: { executionId, message: err.message },
+      }).catch(() => {});
 
       logger.error('Execution failed', { executionId, error: err.message });
     }

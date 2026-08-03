@@ -11,7 +11,7 @@ const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const { createLogger } = require('../../../shared/utils/logger');
 const notificationRoutes = require('./routes/notifications');
-const { startHeartbeat, stopHeartbeat, sendToUser } = require('./services/sseService');
+const { startHeartbeat, stopHeartbeat, sendToUser, sendToAll } = require('./services/sseService');
 const pubsubService = require('./services/pubsubService');
 
 const logger = createLogger('notification-service');
@@ -49,11 +49,18 @@ if (process.env.NODE_ENV !== 'test') {
     logger.info('Notification Service started', { port: PORT, env: process.env.NODE_ENV || 'development' });
     startHeartbeat();
 
-    // Subscribe to Redis Pub/Sub and forward messages to SSE connections
-    pubsubService.subscribe('notif:broadcast', (message) => {
-      if (message.userId) {
-        sendToUser(message.userId, message);
+    // Fan-out Redis events from any instance to local SSE connections
+    pubsubService.psubscribe('notif:*', (message, channel) => {
+      if (channel === 'notif:broadcast') {
+        sendToAll(message);
+        return;
       }
+      const userId = message.userId || (channel.startsWith('notif:') ? channel.slice('notif:'.length) : null);
+      if (userId && userId !== 'broadcast') {
+        sendToUser(userId, message);
+      }
+    }).catch((err) => {
+      logger.error('Failed to pattern-subscribe Redis notifications', { error: err.message });
     });
   });
 

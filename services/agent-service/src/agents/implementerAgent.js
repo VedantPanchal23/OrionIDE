@@ -14,7 +14,8 @@ const SYSTEM_PROMPT = `You are the Implementer agent for Orion IDE. Write comple
 
 class ImplementerAgent extends BaseAgent {
   constructor() {
-    super('Implementer', 'deepseek/deepseek-coder-v2:free', 'openrouter');
+    // OpenRouter model IDs vary by account/provider access. This one is valid for our current OPENROUTER key.
+    super('Implementer', 'deepseek/deepseek-v4-flash', 'openrouter');
   }
 
   getSystemPrompt() {
@@ -81,7 +82,8 @@ class ImplementerAgent extends BaseAgent {
     }
 
     const result = await this.retry(async () => {
-      const text = await this.callLLM(messages, { maxTokens: 8192, temperature: 0.2 });
+      // Keep maxTokens within OpenRouter/free-tier model limits to avoid 400s.
+      const text = await this.callLLM(messages, { maxTokens: 4096, temperature: 0.2 });
       const code = this.cleanCode(text);
       if (!code || code.length < 5) {
         throw Object.assign(new Error('Implementer returned empty code'), { code: 'AGENT_EMPTY_CODE' });

@@ -34,8 +34,12 @@ jest.mock('../src/services/openRouterService', () => ({
 
 // Mock axios
 jest.mock('axios', () => ({
-  post: jest.fn(() => Promise.resolve({ data: { data: { id: 'drive-file-1' } } })),
-  get: jest.fn(() => Promise.resolve({ data: { data: { exitCode: 0, stdout: 'Hello' } } })),
+  post: jest.fn(() => Promise.resolve({
+    data: { data: { id: 'drive-file-1', folderId: 'folder-nested' } },
+  })),
+  get: jest.fn(() => Promise.resolve({
+    data: { data: { exitCode: 0, stdout: 'Hello', projects: [], folderId: 'root-1' } },
+  })),
 }));
 
 process.env.NODE_ENV = 'test';
@@ -204,9 +208,22 @@ describe('ReviewerAgent', () => {
 describe('FileAgent', () => {
   test('writeFile calls drive-service', async () => {
     const fa = new FileAgent();
-    const result = await fa.writeFile('user-1', 'src/main.py', 'print("hi")', 's6', 'folder-1');
+    const result = await fa.writeFile(
+      'user-1',
+      'src/main.py',
+      'print("hi")',
+      's6',
+      'folder-1',
+      'ya29.test-token'
+    );
     expect(result.success).toBe(true);
     expect(result.filePath).toBe('src/main.py');
+  });
+
+  test('writeFile fails without google token', async () => {
+    const fa = new FileAgent();
+    const result = await fa.writeFile('user-1', 'a.py', 'x', 's6', 'folder-1', null);
+    expect(result.success).toBe(false);
   });
 
   test('run() throws not implemented', async () => {
@@ -249,6 +266,7 @@ describe('Agent Routes', () => {
     const res = await request(app)
       .post('/agents/pipeline/start')
       .set('X-User-Id', 'user-1')
+      .set('X-Google-Access-Token', 'ya29.test-google-token')
       .send({ goal: 'Build a Python calculator' })
       .expect(201);
 
@@ -257,11 +275,22 @@ describe('Agent Routes', () => {
   });
 
   test('POST /agents/pipeline/start requires goal', async () => {
-    await request(app).post('/agents/pipeline/start').send({}).expect(400);
+    await request(app)
+      .post('/agents/pipeline/start')
+      .set('X-User-Id', 'user-1')
+      .send({})
+      .expect(400);
+  });
+
+  test('POST /agents/pipeline/start requires auth', async () => {
+    await request(app).post('/agents/pipeline/start').send({ goal: 'x' }).expect(401);
   });
 
   test('GET /agents/pipeline/:id returns 404', async () => {
-    await request(app).get('/agents/pipeline/unknown').expect(404);
+    await request(app)
+      .get('/agents/pipeline/unknown')
+      .set('X-User-Id', 'user-1')
+      .expect(404);
   });
 
   test('GET /health returns ok', async () => {

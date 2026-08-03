@@ -2,7 +2,6 @@
  * Orion IDE — OpenRouter LLM Service
  *
  * Interfaces with OpenRouter API for free-tier models.
- * Uses deepseek/deepseek-coder-v2:free.
  */
 
 const axios = require('axios');
@@ -52,6 +51,13 @@ const chat = async (model, messages, options = {}) => {
     return content;
   } catch (err) {
     const status = err.response?.status;
+    const respData = err.response?.data;
+    const respSnippet =
+      typeof respData === 'string'
+        ? respData.slice(0, 1000)
+        : respData
+          ? JSON.stringify(respData).slice(0, 1000)
+          : null;
 
     if (status === 429) {
       logger.warn('OpenRouter rate limited, retrying in 2s', { model });
@@ -80,7 +86,7 @@ const chat = async (model, messages, options = {}) => {
       throw Object.assign(new Error('OpenRouter request timed out after 60s'), { code: 'LLM_TIMEOUT' });
     }
 
-    logger.error('OpenRouter chat failed', { model, error: err.message });
+    logger.error('OpenRouter chat failed', { model, status, error: err.message, response: respSnippet });
     throw Object.assign(new Error(`OpenRouter error: ${err.message}`), { code: 'LLM_ERROR' });
   }
 };

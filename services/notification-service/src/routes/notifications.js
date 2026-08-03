@@ -10,11 +10,16 @@ const { createLogger } = require('../../../../shared/utils/logger');
 const logger = createLogger('notification-service');
 const router = express.Router();
 
-const INTERNAL_SECRET = process.env.INTERNAL_SECRET || 'orion-internal-secret-dev';
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
+if (!INTERNAL_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('INTERNAL_SECRET is required in production');
+}
+const RESOLVED_INTERNAL_SECRET = INTERNAL_SECRET || 'orion-internal-secret-dev';
 
 // GET /notifications/stream — SSE endpoint
 router.get('/stream', (req, res) => {
-  const userId = req.headers['x-user-id'] || req.query.userId;
+  // Only trust gateway-injected identity — never client-supplied ?userId=
+  const userId = req.headers['x-user-id'];
   if (!userId) {
     return res.status(401).json({ error: { code: 'NOTIF_NO_AUTH', message: 'Missing user context', details: null } });
   }
@@ -39,7 +44,7 @@ router.get('/stream', (req, res) => {
 // POST /notifications/publish — internal-only event publish
 router.post('/publish', (req, res) => {
   const secret = req.headers['x-internal-secret'];
-  if (secret !== INTERNAL_SECRET) {
+  if (secret !== RESOLVED_INTERNAL_SECRET) {
     return res.status(403).json({ error: { code: 'NOTIF_FORBIDDEN', message: 'Invalid internal secret', details: null } });
   }
 
@@ -68,10 +73,9 @@ router.post('/publish', (req, res) => {
   }
 });
 
-// GET /notifications/health — SSE connection stats
+// GET /notifications/health — basic liveness (no sensitive data)
 router.get('/health', (req, res) => {
-  const stats = getStats();
-  res.json({ status: 'ok', service: 'notification-service', ...stats, timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', service: 'notification-service', timestamp: new Date().toISOString() });
 });
 
 module.exports = router;

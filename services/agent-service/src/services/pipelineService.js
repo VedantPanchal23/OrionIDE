@@ -41,8 +41,8 @@ const pushEvent = (sessionId, event) => {
 /**
  * Start a new pipeline.
  */
-const startPipeline = async (userId, goal) => {
-  const session = await createSession(userId, goal);
+const startPipeline = async (userId, goal, options = {}) => {
+  const session = await createSession(userId, goal, options);
   const { sessionId } = session;
 
   pushEvent(sessionId, { type: 'PIPELINE_STARTED', step: 1, agent: 'planner' });
@@ -189,6 +189,28 @@ async function runImplementationLoop(sessionId) {
   const designerOutput = s.designer.output;
   const totalFiles = designerOutput.files.length;
 
+  // Create (or reuse) the Drive project folder before writing any files
+  try {
+    if (!s.fileAgent?.projectFolderId) {
+      const folderId = await fileAgent.ensureProjectFolder(
+        s.userId,
+        s.projectName || designerOutput.projectName || 'Orion Project',
+        s.googleAccessToken
+      );
+      await updateSession(sessionId, 'fileAgent.projectFolderId', folderId);
+      pushEvent(sessionId, { type: 'PROJECT_FOLDER_READY', projectFolderId: folderId });
+    }
+  } catch (err) {
+    await updateSession(sessionId, 'status', 'failed');
+    pushEvent(sessionId, {
+      type: 'AGENT_ERROR',
+      step: 3,
+      agent: 'fileAgent',
+      error: err.message,
+    });
+    return;
+  }
+
   await updateSessionMulti(sessionId, {
     'currentStep': 3,
     'implementer.totalFiles': totalFiles,
@@ -288,6 +310,7 @@ async function implementNextFile(sessionId) {
         files[idx].code,
         sessionId,
         currentSession.fileAgent.projectFolderId,
+        currentSession.googleAccessToken,
       );
 
       const written = [...(currentSession.fileAgent.written || [])];
@@ -353,6 +376,28 @@ function runExecution(sessionId) {
 
       const result = await runAgent.execute(s.userId, runConfig, code, sessionId);
 
+      const executionNotFinished =
+        !result
+        || result.status === 'timeout'
+        || result.exitCode === undefined
+        || result.exitCode === null;
+
+      if (executionNotFinished) {
+        await updateSessionMulti(sessionId, {
+          'runAgent.result': result,
+          'currentStep': 6,
+          'status': 'failed',
+        });
+        pushEvent(sessionId, {
+          type: 'PIPELINE_COMPLETE',
+          executionResult: result,
+          error: 'Execution did not finish within polling window',
+          totalFiles: s.implementer.files.length,
+          projectName: s.projectName,
+        });
+        return;
+      }
+
       await updateSessionMulti(sessionId, {
         'runAgent.result': result,
         'currentStep': 6,
@@ -367,11 +412,11 @@ function runExecution(sessionId) {
       });
     } catch (err) {
       await updateSessionMulti(sessionId, {
-        'status': 'complete',
+        'status': 'failed',
         'currentStep': 6,
         'runAgent.result': { error: err.message },
       });
-      pushEvent(sessionId, { type: 'PIPELINE_COMPLETE', error: err.message });
+      pushEvent(sessionId, { type: 'PIPELINE_FAILED', error: err.message });
     }
   });
 }

@@ -28,9 +28,17 @@ const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
 const http = require('http');
+const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const { v4: uuidv4 } = require('uuid');
 const ptyManager = require('./services/ptyManager');
+const workspaceSync = require('./services/workspaceSync');
+const gitRoutes = require('./routes/git');
+const portsService = require('./services/portsService');
+
+if (process.env.NODE_ENV !== 'test') {
+  require('./utils/validateEnv')();
+}
 
 const app = express();
 const PORT = process.env.PORT || 3007;
@@ -48,8 +56,8 @@ app.use(express.json());
 app.use((req, res, next) => {
   req.requestId = req.headers['x-request-id'] || uuidv4();
   res.setHeader('X-Request-Id', req.requestId);
-  // Extract user from gateway headers
   req.userId = req.headers['x-user-id'] || null;
+  req.googleAccessToken = req.headers['x-google-access-token'] || null;
   next();
 });
 
@@ -73,24 +81,65 @@ app.get('/terminal/sessions', (req, res) => {
   res.json({ data: sessions });
 });
 
-// ── REST: Create a terminal ──────────────────────────────────────────────
-app.post('/terminal/sessions', (req, res) => {
+// ── REST: Create a terminal (optionally sync Drive project first) ────────
+app.post('/terminal/sessions', async (req, res) => {
   if (!req.userId) {
     return res.status(401).json({ error: { code: 'AUTH_REQUIRED', message: 'Missing X-User-Id header' } });
   }
   try {
-    const { cols, rows, cwd } = req.body || {};
-    const result = ptyManager.createSession(req.userId, { cols, rows, cwd });
+    const { cols, rows, cwd, projectFolderId, projectId } = req.body || {};
+    const folderId = projectFolderId || projectId || null;
+    let safeCwd = cwd;
+    let syncMeta = null;
+
+    // Real Drive project → pull into per-user workspace, then open shell there
+    if (folderId) {
+      if (!req.googleAccessToken) {
+        return res.status(401).json({
+          error: {
+            code: 'DRIVE_TOKEN_REQUIRED',
+            message: 'X-Google-Access-Token required to sync a Drive project into the terminal',
+          },
+        });
+      }
+      syncMeta = await workspaceSync.pullProject({
+        userId: req.userId,
+        projectFolderId: folderId,
+        googleAccessToken: req.googleAccessToken,
+      });
+      safeCwd = syncMeta.cwd;
+    } else if (typeof cwd === 'string' && cwd.startsWith('/workspace/')) {
+      safeCwd = cwd.slice('/workspace/'.length);
+    } else if (cwd === '/workspace') {
+      safeCwd = '.';
+    }
+
+    const result = ptyManager.createSession(req.userId, {
+      cols,
+      rows,
+      cwd: safeCwd,
+      projectFolderId: folderId,
+      googleAccessToken: req.googleAccessToken,
+    });
     console.log(`[terminal] Created terminal ${result.terminalId} for user ${req.userId}`);
-    res.status(201).json({ data: result });
+    res.status(201).json({
+      data: {
+        ...result,
+        synced: Boolean(syncMeta),
+        fileCount: syncMeta?.fileCount ?? null,
+      },
+    });
   } catch (err) {
-    const status = err.code === 'TERMINAL_LIMIT_EXCEEDED' ? 429 : 500;
+    const status = err.code === 'TERMINAL_LIMIT_EXCEEDED' ? 429
+      : err.code === 'TERMINAL_INVALID_CWD' ? 400
+      : err.code === 'TERMINAL_SYNC_LIMIT' ? 413
+      : err.status || 500;
     res.status(status).json({ error: { code: err.code || 'TERMINAL_ERROR', message: err.message } });
   }
 });
 
-// ── REST: Destroy a terminal ─────────────────────────────────────────────
-app.delete('/terminal/sessions/:terminalId', (req, res) => {
+// ── REST: Push local workspace back to Drive ─────────────────────────────
+app.post('/terminal/sessions/:terminalId/sync', async (req, res) => {
   if (!req.userId) {
     return res.status(401).json({ error: { code: 'AUTH_REQUIRED', message: 'Missing X-User-Id header' } });
   }
@@ -101,10 +150,98 @@ app.delete('/terminal/sessions/:terminalId', (req, res) => {
   if (session.userId !== req.userId) {
     return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Not your terminal' } });
   }
+  if (!session.projectFolderId) {
+    return res.status(400).json({
+      error: { code: 'TERMINAL_NO_PROJECT', message: 'Terminal was not opened on a Drive project' },
+    });
+  }
+  const token = req.googleAccessToken || session.googleAccessToken;
+  if (!token) {
+    return res.status(401).json({
+      error: { code: 'DRIVE_TOKEN_REQUIRED', message: 'Google access token required to sync' },
+    });
+  }
+  try {
+    const result = await workspaceSync.pushProject({
+      userId: req.userId,
+      projectFolderId: session.projectFolderId,
+      googleAccessToken: token,
+      cwd: session.cwd,
+    });
+    res.json({ data: result });
+  } catch (err) {
+    res.status(err.status || 500).json({
+      error: { code: err.code || 'TERMINAL_SYNC_ERROR', message: err.message },
+    });
+  }
+});
+
+// ── REST: Destroy a terminal (push Drive changes when possible) ──────────
+app.delete('/terminal/sessions/:terminalId', async (req, res) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: { code: 'AUTH_REQUIRED', message: 'Missing X-User-Id header' } });
+  }
+  const session = ptyManager.getSession(req.params.terminalId);
+  if (!session) {
+    return res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Terminal not found' } });
+  }
+  if (session.userId !== req.userId) {
+    return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Not your terminal' } });
+  }
+
+  let syncResult = null;
+  const token = req.googleAccessToken || session.googleAccessToken;
+  if (session.projectFolderId && token) {
+    try {
+      syncResult = await workspaceSync.pushProject({
+        userId: req.userId,
+        projectFolderId: session.projectFolderId,
+        googleAccessToken: token,
+        cwd: session.cwd,
+      });
+    } catch (err) {
+      console.warn(`[terminal] push on destroy failed: ${err.message}`);
+    }
+  }
+
   ptyManager.destroySession(req.params.terminalId);
   console.log(`[terminal] Destroyed terminal ${req.params.terminalId}`);
-  res.json({ data: { terminated: true } });
+  res.json({ data: { terminated: true, synced: syncResult } });
 });
+
+// ── Forwarded ports ───────────────────────────────────────────────────────
+app.get('/terminal/ports', (req, res) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: { code: 'AUTH_REQUIRED', message: 'Missing X-User-Id header' } });
+  }
+  res.json({ data: { ports: portsService.listPorts(req.userId) } });
+});
+
+app.post('/terminal/ports', (req, res) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: { code: 'AUTH_REQUIRED', message: 'Missing X-User-Id header' } });
+  }
+  try {
+    const record = portsService.registerPort(req.userId, req.body || {});
+    res.status(201).json({ data: record });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: { code: err.code || 'PORTS_ERROR', message: err.message } });
+  }
+});
+
+app.delete('/terminal/ports/:id', (req, res) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: { code: 'AUTH_REQUIRED', message: 'Missing X-User-Id header' } });
+  }
+  const ok = portsService.unregisterPort(req.userId, req.params.id);
+  if (!ok) {
+    return res.status(404).json({ error: { code: 'PORTS_NOT_FOUND', message: 'Port not registered' } });
+  }
+  res.json({ data: { deleted: true } });
+});
+
+// ── Git (workspace projects under TERMINAL_WORKSPACE_ROOT) ────────────────
+app.use('/git', gitRoutes);
 
 // ── 404 ───────────────────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -126,6 +263,7 @@ const wss = new WebSocketServer({ server, path: '/terminal/ws/terminal' });
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const terminalId = url.searchParams.get('terminalId');
+  const connectToken = url.searchParams.get('token') || url.searchParams.get('connectToken');
 
   if (!terminalId) {
     ws.send(JSON.stringify({ type: 'error', message: 'Missing terminalId query parameter' }));
@@ -133,10 +271,25 @@ wss.on('connection', (ws, req) => {
     return;
   }
 
+  if (!connectToken) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Missing connect token' }));
+    ws.close(1008, 'Unauthorized');
+    return;
+  }
+
   const session = ptyManager.getSession(terminalId);
   if (!session) {
     ws.send(JSON.stringify({ type: 'error', message: 'Terminal session not found' }));
     ws.close(1008, 'Session not found');
+    return;
+  }
+
+  // Constant-time compare of connect tokens
+  const expected = Buffer.from(session.connectToken || '');
+  const provided = Buffer.from(connectToken);
+  if (expected.length !== provided.length || !crypto.timingSafeEqual(expected, provided)) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Invalid connect token' }));
+    ws.close(1008, 'Unauthorized');
     return;
   }
 
@@ -208,26 +361,30 @@ wss.on('connection', (ws, req) => {
 });
 
 // ── Periodic cleanup ──────────────────────────────────────────────────────
-const cleanupInterval = setInterval(() => {
-  ptyManager.cleanupIdleSessions();
-}, 5 * 60 * 1000); // Every 5 minutes
+let cleanupInterval = null;
 
-// ── Start server ──────────────────────────────────────────────────────────
-server.listen(PORT, () => {
-  console.log(`[terminal] Terminal Service started on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  cleanupInterval = setInterval(() => {
+    ptyManager.cleanupIdleSessions();
+  }, 5 * 60 * 1000); // Every 5 minutes
 
-// ── Graceful shutdown ─────────────────────────────────────────────────────
-const shutdown = () => {
-  console.log('[terminal] Shutting down...');
-  clearInterval(cleanupInterval);
-  ptyManager.destroyAll();
-  wss.close();
-  server.close();
-  process.exit(0);
-};
+  // ── Start server ──────────────────────────────────────────────────────────
+  server.listen(PORT, () => {
+    console.log(`[terminal] Terminal Service started on port ${PORT}`);
+  });
 
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+  // ── Graceful shutdown ─────────────────────────────────────────────────────
+  const shutdown = () => {
+    console.log('[terminal] Shutting down...');
+    if (cleanupInterval) clearInterval(cleanupInterval);
+    ptyManager.destroyAll();
+    wss.close();
+    server.close();
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+}
 
 module.exports = app;
