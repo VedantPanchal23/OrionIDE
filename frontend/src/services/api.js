@@ -21,10 +21,9 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid — redirect to login
-      // Use location.replace so there's no back-button loop
       const currentPath = window.location.pathname;
-      if (currentPath !== '/login') {
+      // Don't hard-redirect during OAuth handoff — AuthSuccess handles failures
+      if (currentPath !== '/login' && currentPath !== '/auth/success') {
         window.location.replace('/login');
       }
     }

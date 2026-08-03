@@ -4,15 +4,29 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './src/test/setup.js',
+    css: false,
+    include: ['src/**/*.{test,spec}.{js,jsx}'],
+    exclude: ['node_modules', 'e2e', 'dist'],
+  },
   server: {
     port: 3010,
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
-        ws: true, // Required for terminal WebSocket proxying
-      }
-    }
+        ws: true,
+        // Avoid buffering upgrades; required for terminal PTY
+        configure: (proxy) => {
+          proxy.on('proxyReqWs', (_proxyReq, _req, socket) => {
+            socket.on('error', () => {});
+          });
+        },
+      },
+    },
   },
   build: {
     chunkSizeWarningLimit: 600,

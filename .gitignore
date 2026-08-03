@@ -31,5 +31,9 @@ Thumbs.db
 redis-data/
 piston-packages/
 
+# Workspace runtime data
+workspace/*
+!workspace/.gitkeep
+
 # Coverage reports
 coverage/

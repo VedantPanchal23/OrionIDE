@@ -15,13 +15,42 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+    env_file:
+      - .env
+    command: >
+      sh -c 'redis-server --appendonly yes --protected-mode yes
+      --requirepass "$${REDIS_PASSWORD:-orion-dev-redis}"'
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD:-orion-dev-redis}\" ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 3
+    networks:
+      - orion-network
+
+  # ── Postgres (users / billing) ──────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: orion-postgres-dev
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-orion}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orion-dev-pg}
+      POSTGRES_DB: ${POSTGRES_DB:-orion}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-orion} -d $${POSTGRES_DB:-orion}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - orion-network
 
@@ -70,6 +99,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     networks:
       - orion-network
 
@@ -90,7 +121,6 @@ services:
     volumes:
       - ./services/drive-service/src:/app/src
       - ./shared:/shared
-      - ./workspace:/app/src/mock-workspace
     command: npx nodemon src/app.js
     depends_on:
       redis:
@@ -112,9 +142,12 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3003
+      - TERMINAL_WORKSPACE_ROOT=/workspace
+      - ENABLE_DEBUGGER_API=true
     volumes:
       - ./services/editor-service/src:/app/src
       - ./shared:/shared
+      - terminal-workspaces:/workspace
     command: npx nodemon src/app.js
     depends_on:
       redis:
@@ -136,12 +169,16 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3004
+      - PISTON_API_URL=http://piston:2000/api/v2
     volumes:
       - ./services/execution-service/src:/app/src
       - ./shared:/shared
     command: npx nodemon src/app.js
     depends_on:
-      - piston
+      redis:
+        condition: service_healthy
+      piston:
+        condition: service_started
     networks:
       - orion-network
 
@@ -207,11 +244,15 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3007
+      - TERMINAL_WORKSPACE_ROOT=/workspace
+      - DRIVE_SERVICE_URL=http://drive-service:3002
     volumes:
       - ./services/terminal-service/src:/app/src
       - ./shared:/shared
-      - ./workspace:/workspace
+      - terminal-workspaces:/workspace
     command: npx nodemon src/app.js
+    depends_on:
+      - drive-service
     networks:
       - orion-network
 
@@ -245,6 +286,8 @@ networks:
 volumes:
   redis-data:
     name: orion-redis-data
+  postgres-data:
+    name: orion-postgres-data
   piston-packages:
     name: orion-piston-packages
   terminal-workspaces:

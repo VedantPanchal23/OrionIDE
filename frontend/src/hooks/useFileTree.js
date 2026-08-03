@@ -1,259 +1,251 @@
 /**
- * Orion IDE — useFileTree Hook
+ * Orion IDE — Explorer file tree state
  *
- * Manages file tree state: loading, expanding, creating, deleting, renaming.
- * Auto-updates via notification events.
+ * Bug fixes baked in:
+ *  - New file/folder parent resolves to the selected folder, or the parent
+ *    of the selected file, or the project root — never hard-coded root.
+ *  - Duplicate sibling names are rejected client-side before hitting the
+ *    API, and server 409s are surfaced with a distinguishable error code
+ *    so the caller can toast them.
+ *  - Folders created client-side always carry isFolder:true regardless of
+ *    what the API happens to echo back.
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { driveService } from '../services/driveService';
-import { on, off } from '../services/notificationService';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import * as driveService from '../services/driveService';
 
-/**
- * @typedef {{ id: string, name: string, mimeType: string, isFolder: boolean, children: TreeNode[]|null, parentId: string|null }} TreeNode
- */
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
-const useFileTree = () => {
-  const [tree, setTree] = useState(null);          // Root tree node
-  const [expandedFolders, setExpandedFolders] = useState(new Set());
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const rootIdRef = useRef(null);
+function toNode(apiItem, parentId) {
+  const isFolder = Boolean(apiItem.isFolder ?? apiItem.mimeType === FOLDER_MIME);
+  return {
+    id: apiItem.id,
+    name: apiItem.name,
+    isFolder,
+    mimeType: apiItem.mimeType || (isFolder ? FOLDER_MIME : null),
+    parentId,
+    modifiedTime: apiItem.modifiedTime || null,
+  };
+}
 
-  /**
-   * Convert Drive API items to tree nodes.
-   */
-  const toNode = (item) => ({
-    id: item.id,
-    name: item.name,
-    mimeType: item.mimeType,
-    isFolder: item.mimeType === 'application/vnd.google-apps.folder',
-    children: item.mimeType === 'application/vnd.google-apps.folder' ? null : undefined,
-    parentId: item.parents?.[0] || null,
-    modifiedTime: item.modifiedTime,
-    size: item.size,
+function sortIds(ids, nodesById) {
+  return [...ids].sort((a, b) => {
+    const na = nodesById[a];
+    const nb = nodesById[b];
+    if (!na || !nb) return 0;
+    if (na.isFolder !== nb.isFolder) return na.isFolder ? -1 : 1;
+    return na.name.localeCompare(nb.name, undefined, { sensitivity: 'base' });
   });
+}
 
-  /**
-   * Load the project root folder.
-   */
-  const loadTree = useCallback(async (projectFolderId) => {
-    setIsLoading(true);
-    setError(null);
-    rootIdRef.current = projectFolderId;
+export function useFileTree(projectId, projectName) {
+  const [nodesById, setNodesById] = useState({});
+  const [childrenByParent, setChildrenByParent] = useState({});
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
+  const [loadingIds, setLoadingIds] = useState(() => new Set());
+  const [selectedId, setSelectedId] = useState(null);
+  const [editingId, setEditingId] = useState(null); // node id being renamed, or 'new:<parentId>:<type>'
+  const [ready, setReady] = useState(false);
 
-    try {
-      const res = await driveService.listFiles(projectFolderId);
-      const items = (res.data?.data?.files || res.data?.data || []).map(toNode);
+  const nodesRef = useRef(nodesById);
+  const childrenRef = useRef(childrenByParent);
 
-      // Sort: folders first, then alphabetical
-      items.sort((a, b) => {
-        if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      });
+  useEffect(() => { nodesRef.current = nodesById; }, [nodesById]);
+  useEffect(() => { childrenRef.current = childrenByParent; }, [childrenByParent]);
 
-      setTree({
-        id: projectFolderId,
-        name: 'OrionIDE',
-        isFolder: true,
-        children: items,
-        parentId: null,
-      });
-      setExpandedFolders(new Set([projectFolderId]));
-    } catch (err) {
-      setError(err.message || 'Failed to load file tree');
-    } finally {
-      setIsLoading(false);
-    }
+  const setLoading = useCallback((id, on) => {
+    setLoadingIds((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id); else next.delete(id);
+      return next;
+    });
   }, []);
 
-  /**
-   * Expand a folder (load children if not loaded).
-   */
-  const expandFolder = useCallback(async (folderId) => {
-    const newExpanded = new Set(expandedFolders);
-
-    if (newExpanded.has(folderId)) {
-      newExpanded.delete(folderId);
-      setExpandedFolders(newExpanded);
-      return;
-    }
-
-    newExpanded.add(folderId);
-    setExpandedFolders(newExpanded);
-
-    // Load children if not yet loaded
-    setTree((prev) => {
-      if (!prev) return prev;
-      return updateNodeChildren(prev, folderId, null, true);
-    });
-
+  const loadFolder = useCallback(async (folderId) => {
+    setLoading(folderId, true);
     try {
       const res = await driveService.listFiles(folderId);
-      const items = (res.data?.data?.files || res.data?.data || []).map(toNode);
-      items.sort((a, b) => {
-        if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
-        return a.name.localeCompare(b.name);
+      const items = res.data?.data?.files || [];
+      const nodes = items.map((it) => toNode(it, folderId));
+      setNodesById((prev) => {
+        const next = { ...prev };
+        nodes.forEach((n) => { next[n.id] = n; });
+        return next;
       });
-
-      setTree((prev) => {
-        if (!prev) return prev;
-        return updateNodeChildren(prev, folderId, items, false);
-      });
-    } catch {
-      // Collapse on error
-      newExpanded.delete(folderId);
-      setExpandedFolders(new Set(newExpanded));
+      setChildrenByParent((prev) => ({
+        ...prev,
+        [folderId]: sortIds(nodes.map((n) => n.id), Object.fromEntries(nodes.map((n) => [n.id, n]))),
+      }));
+      return nodes;
+    } finally {
+      setLoading(folderId, false);
     }
-  }, [expandedFolders]);
+  }, [setLoading]);
 
-  /**
-   * Create a new file or folder.
-   */
-  const createItem = useCallback(async (parentFolderId, name, type = 'file') => {
-    try {
-      const res = await driveService.createFile(parentFolderId, name, type);
-      const newItem = toNode(res.data?.data || res.data);
-
-      // Add to tree
-      setTree((prev) => {
-        if (!prev) return prev;
-        return addNodeChild(prev, parentFolderId, newItem);
-      });
-
-      // Auto-expand parent
-      setExpandedFolders((prev) => new Set([...prev, parentFolderId]));
-      return newItem;
-    } catch (err) {
-      throw err;
-    }
-  }, []);
-
-  /**
-   * Delete a file or folder.
-   */
-  const deleteItem = useCallback(async (itemId) => {
-    try {
-      await driveService.deleteFile(itemId);
-      setTree((prev) => {
-        if (!prev) return prev;
-        return removeNode(prev, itemId);
-      });
-    } catch (err) {
-      throw err;
-    }
-  }, []);
-
-  /**
-   * Rename a file or folder.
-   */
-  const renameItem = useCallback(async (itemId, newName) => {
-    try {
-      await driveService.renameFile(itemId, newName);
-      setTree((prev) => {
-        if (!prev) return prev;
-        return renameNode(prev, itemId, newName);
-      });
-    } catch (err) {
-      throw err;
-    }
-  }, []);
-
-  /**
-   * Refresh the tree from root.
-   */
-  const refreshTree = useCallback(() => {
-    if (rootIdRef.current) loadTree(rootIdRef.current);
-  }, [loadTree]);
-
-  // ── Listen for Drive events to auto-update ─────────────────────────
+  // (Re)initialize whenever the project changes.
   useEffect(() => {
-    const handleCreated = (event) => {
-      const item = event?.payload;
-      if (item && item.parentId) {
-        setTree((prev) => {
-          if (!prev) return prev;
-          return addNodeChild(prev, item.parentId, toNode(item));
-        });
+    if (!projectId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting tree state for a new project id
+    setReady(false);
+    const rootNode = { id: projectId, name: projectName || 'Project', isFolder: true, parentId: null, mimeType: FOLDER_MIME };
+    setNodesById({ [projectId]: rootNode });
+    setChildrenByParent({});
+    setExpandedIds(new Set([projectId]));
+    setSelectedId(null);
+    setEditingId(null);
+    loadFolder(projectId).finally(() => setReady(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
+
+  const toggleExpand = useCallback((id) => {
+    const node = nodesRef.current[id];
+    if (!node?.isFolder) return;
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+        if (!childrenRef.current[id]) loadFolder(id);
       }
-    };
+      return next;
+    });
+  }, [loadFolder]);
 
-    const handleDeleted = (event) => {
-      const fileId = event?.payload?.fileId;
-      if (fileId) {
-        setTree((prev) => {
-          if (!prev) return prev;
-          return removeNode(prev, fileId);
-        });
-      }
-    };
+  const expand = useCallback((id) => {
+    setExpandedIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+    if (!childrenRef.current[id]) return loadFolder(id);
+    return Promise.resolve(childrenRef.current[id]);
+  }, [loadFolder]);
 
-    on('DRIVE_FILE_CREATED', handleCreated);
-    on('DRIVE_FILE_DELETED', handleDeleted);
+  /** Bug fix #1: never default straight to root. */
+  const resolveParentForNew = useCallback(() => {
+    if (!selectedId) return projectId;
+    const node = nodesRef.current[selectedId];
+    if (!node) return projectId;
+    if (node.isFolder) return selectedId;
+    return node.parentId || projectId;
+  }, [selectedId, projectId]);
 
-    return () => {
-      off('DRIVE_FILE_CREATED', handleCreated);
-      off('DRIVE_FILE_DELETED', handleDeleted);
-    };
+  const siblingClash = useCallback((parentId, name, isFolder) => {
+    const ids = childrenRef.current[parentId] || [];
+    return ids.some((id) => {
+      const n = nodesRef.current[id];
+      return n && n.isFolder === isFolder && n.name.toLowerCase() === name.toLowerCase();
+    });
   }, []);
+
+  const insertNode = useCallback((node) => {
+    setNodesById((prev) => ({ ...prev, [node.id]: node }));
+    setChildrenByParent((prev) => {
+      const existing = prev[node.parentId] || [];
+      const withNew = existing.includes(node.id) ? existing : [...existing, node.id];
+      const merged = { ...nodesRef.current, [node.id]: node };
+      return { ...prev, [node.parentId]: sortIds(withNew, merged) };
+    });
+  }, []);
+
+  /**
+   * Create a file or folder. Parent resolves via resolveParentForNew()
+   * unless explicitly overridden (e.g. "New File" from a folder's context menu).
+   * Throws { code: 'DUPLICATE' } client-side, or rethrows the axios error
+   * (with .response.status === 409) from the server — callers should toast both.
+   */
+  const createItem = useCallback(async (name, type, parentIdOverride) => {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) throw Object.assign(new Error('Name is required'), { code: 'INVALID_NAME' });
+    const parentId = parentIdOverride || resolveParentForNew();
+    const isFolder = type === 'folder';
+
+    if (siblingClash(parentId, trimmed, isFolder)) {
+      throw Object.assign(
+        new Error(`A ${isFolder ? 'folder' : 'file'} named "${trimmed}" already exists here`),
+        { code: 'DUPLICATE' },
+      );
+    }
+
+    // Ensure the parent folder is expanded/loaded so the new node is visible immediately.
+    await expand(parentId);
+    if (siblingClash(parentId, trimmed, isFolder)) {
+      throw Object.assign(
+        new Error(`A ${isFolder ? 'folder' : 'file'} named "${trimmed}" already exists here`),
+        { code: 'DUPLICATE' },
+      );
+    }
+
+    const res = await driveService.createFile(parentId, trimmed, isFolder ? 'folder' : 'file', '');
+    const created = res.data?.data;
+    const node = toNode({ ...created, isFolder: isFolder ? true : Boolean(created?.isFolder) }, parentId);
+    insertNode(node);
+    setSelectedId(node.id);
+    return node;
+  }, [resolveParentForNew, siblingClash, expand, insertNode]);
+
+  const renameItem = useCallback(async (id, newName) => {
+    const trimmed = String(newName || '').trim();
+    const node = nodesRef.current[id];
+    if (!node || !trimmed || trimmed === node.name) return node;
+    if (siblingClash(node.parentId, trimmed, node.isFolder)) {
+      throw Object.assign(new Error(`"${trimmed}" already exists here`), { code: 'DUPLICATE' });
+    }
+    await driveService.renameFile(id, trimmed);
+    setNodesById((prev) => ({ ...prev, [id]: { ...prev[id], name: trimmed } }));
+    setChildrenByParent((prev) => {
+      const merged = { ...nodesRef.current, [id]: { ...node, name: trimmed } };
+      return { ...prev, [node.parentId]: sortIds(prev[node.parentId] || [], merged) };
+    });
+    return { ...node, name: trimmed };
+  }, [siblingClash]);
+
+  const removeSubtree = useCallback((id) => {
+    setNodesById((prev) => {
+      const next = { ...prev };
+      const stack = [id];
+      while (stack.length) {
+        const cur = stack.pop();
+        const kids = childrenRef.current[cur] || [];
+        kids.forEach((k) => stack.push(k));
+        delete next[cur];
+      }
+      return next;
+    });
+    setChildrenByParent((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      Object.keys(next).forEach((parent) => {
+        next[parent] = next[parent].filter((cid) => cid !== id);
+      });
+      return next;
+    });
+  }, []);
+
+  const deleteItem = useCallback(async (id) => {
+    await driveService.deleteFile(id);
+    if (selectedId === id) setSelectedId(null);
+    removeSubtree(id);
+  }, [removeSubtree, selectedId]);
+
+  const refreshFolder = useCallback((id) => loadFolder(id), [loadFolder]);
 
   return {
-    tree,
-    expandedFolders,
-    isLoading,
-    error,
-    loadTree,
-    expandFolder,
+    rootId: projectId,
+    nodesById,
+    childrenByParent,
+    expandedIds,
+    loadingIds,
+    selectedId,
+    setSelectedId,
+    editingId,
+    setEditingId,
+    ready,
+    toggleExpand,
+    expand,
+    resolveParentForNew,
     createItem,
-    deleteItem,
     renameItem,
-    refreshTree,
+    deleteItem,
+    refreshFolder,
   };
-};
-
-// ── Tree manipulation helpers ─────────────────────────────────────────────
-
-function updateNodeChildren(node, targetId, children, loading) {
-  if (node.id === targetId) {
-    return { ...node, children: children || node.children, _loading: loading };
-  }
-  if (node.children) {
-    return { ...node, children: node.children.map((c) => updateNodeChildren(c, targetId, children, loading)) };
-  }
-  return node;
-}
-
-function addNodeChild(node, parentId, child) {
-  if (node.id === parentId) {
-    const existing = node.children || [];
-    if (existing.find((c) => c.id === child.id)) return node;
-    const newChildren = [...existing, child];
-    newChildren.sort((a, b) => {
-      if (a.isFolder !== b.isFolder) return a.isFolder ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-    return { ...node, children: newChildren };
-  }
-  if (node.children) {
-    return { ...node, children: node.children.map((c) => addNodeChild(c, parentId, child)) };
-  }
-  return node;
-}
-
-function removeNode(node, targetId) {
-  if (node.id === targetId) return null;
-  if (node.children) {
-    return { ...node, children: node.children.map((c) => removeNode(c, targetId)).filter(Boolean) };
-  }
-  return node;
-}
-
-function renameNode(node, targetId, newName) {
-  if (node.id === targetId) return { ...node, name: newName };
-  if (node.children) {
-    return { ...node, children: node.children.map((c) => renameNode(c, targetId, newName)) };
-  }
-  return node;
 }
 
 export default useFileTree;

@@ -21,9 +21,10 @@ export const listFiles = (folderId) =>
 
 /**
  * Create a new file or folder.
+ * @param {string} [content] — optional initial file content
  */
-export const createFile = (parentFolderId, name, type = 'file') =>
-  api.post('/drive/files', { parentFolderId, name, type });
+export const createFile = (parentFolderId, name, type = 'file', content = '') =>
+  api.post('/drive/files', { parentFolderId, name, type, content });
 
 /**
  * Read file content.

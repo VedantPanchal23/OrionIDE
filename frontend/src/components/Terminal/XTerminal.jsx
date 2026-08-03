@@ -1,221 +1,131 @@
 /**
- * Orion IDE — XTerminal Component
- *
- * Interactive terminal using xterm.js with WebSocket connection
- * to the terminal-service PTY backend.
- *
- * Features:
- * - Full interactive shell (bash/sh/powershell)
- * - ANSI color and cursor support
- * - Auto-resize to fit container
- * - Reconnect on disconnect
- * - Web links detection
+ * Orion IDE — xterm.js host, backed by the singleton terminal session.
  */
 
-import React, { useRef, useEffect, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
+import * as termSession from '../../lib/terminalSession';
 
-const XTerminal = ({ terminalId, wsUrl, isActive, onExit }) => {
-  const containerRef = useRef(null);
-  const termRef = useRef(null);
-  const fitAddonRef = useRef(null);
-  const wsRef = useRef(null);
-  const reconnectTimerRef = useRef(null);
-  const mountedRef = useRef(true);
-
-  // ── WebSocket connection with reconnect ─────────────────────────────
-  const connectWebSocket = useCallback((term, url) => {
-    if (!mountedRef.current) return;
-
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      // Connection established — xterm is ready
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        switch (msg.type) {
-          case 'output':
-            term.write(msg.data);
-            break;
-          case 'connected':
-            // Server confirmed connection — resize to match terminal
-            if (fitAddonRef.current) {
-              try { fitAddonRef.current.fit(); } catch {}
-            }
-            break;
-          case 'exit':
-            term.write('\r\n\x1b[90m[Process exited]\x1b[0m\r\n');
-            if (onExit) onExit(terminalId, msg.code);
-            break;
-          case 'error':
-            term.write(`\r\n\x1b[31m[Error: ${msg.message}]\x1b[0m\r\n`);
-            break;
-          default:
-            break;
-        }
-      } catch {
-        // Non-JSON data — write directly
-        term.write(event.data);
-      }
-    };
-
-    ws.onclose = (event) => {
-      if (!mountedRef.current) return;
-      if (event.code !== 1000) {
-        term.write('\r\n\x1b[33m[Connection lost. Reconnecting...]\x1b[0m\r\n');
-        reconnectTimerRef.current = setTimeout(() => {
-          if (mountedRef.current) connectWebSocket(term, url);
-        }, 2000);
-      }
-    };
-
-    ws.onerror = () => {
-      // onclose will handle reconnect
-    };
-  }, [terminalId, onExit]);
-
-  // ── Initialize xterm.js ─────────────────────────────────────────────
-  useEffect(() => {
-    if (!containerRef.current || !terminalId || !wsUrl) return;
-
-    mountedRef.current = true;
-
-    const term = new Terminal({
-      theme: {
-        background: '#010409',
-        foreground: '#e6edf3',
-        cursor: '#58a6ff',
-        cursorAccent: '#010409',
-        selectionBackground: '#264f78',
-        selectionForeground: '#e6edf3',
-        black: '#484f58',
-        red: '#f85149',
-        green: '#3fb950',
-        yellow: '#e3b341',
-        blue: '#58a6ff',
-        magenta: '#bc8cff',
-        cyan: '#39d2c0',
-        white: '#b1bac4',
-        brightBlack: '#6e7681',
-        brightRed: '#ffa198',
-        brightGreen: '#56d364',
-        brightYellow: '#e3b341',
-        brightBlue: '#79c0ff',
-        brightMagenta: '#d2a8ff',
-        brightCyan: '#56d4dd',
-        brightWhite: '#f0f6fc',
-      },
-      fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-      fontSize: 13,
-      lineHeight: 1.4,
-      letterSpacing: 0,
-      cursorBlink: true,
-      cursorStyle: 'bar',
-      cursorWidth: 2,
-      scrollback: 10000,
-      allowProposedApi: true,
-      drawBoldTextInBrightColors: true,
-    });
-
-    const fitAddon = new FitAddon();
-    const webLinksAddon = new WebLinksAddon();
-
-    term.loadAddon(fitAddon);
-    term.loadAddon(webLinksAddon);
-
-    term.open(containerRef.current);
-
-    // Small delay to allow DOM measurement before fitting
-    requestAnimationFrame(() => {
-      try { fitAddon.fit(); } catch {}
-    });
-
-    termRef.current = term;
-    fitAddonRef.current = fitAddon;
-
-    // ── Connect WebSocket ───────────────────────────────────────────
-    connectWebSocket(term, wsUrl);
-
-    // ── Handle user input → WebSocket ───────────────────────────────
-    const inputDisposable = term.onData((data) => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'input', data }));
-      }
-    });
-
-    // ── Handle resize → WebSocket ───────────────────────────────────
-    const resizeDisposable = term.onResize(({ cols, rows }) => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'resize', cols, rows }));
-      }
-    });
-
-    // ── Cleanup ─────────────────────────────────────────────────────
-    return () => {
-      mountedRef.current = false;
-      clearTimeout(reconnectTimerRef.current);
-      inputDisposable.dispose();
-      resizeDisposable.dispose();
-      if (wsRef.current) {
-        wsRef.current.close(1000, 'Component unmounted');
-        wsRef.current = null;
-      }
-      term.dispose();
-      termRef.current = null;
-      fitAddonRef.current = null;
-    };
-  }, [terminalId, wsUrl]); // eslint-disable-line react-hooks/exhaustive-deps
-
-
-
-  // ── Re-fit on container resize or tab activation ────────────────────
-  useEffect(() => {
-    if (!isActive || !fitAddonRef.current) return;
-
-    const doFit = () => {
-      try { fitAddonRef.current.fit(); } catch {}
-    };
-
-    // Fit immediately when tab becomes active
-    requestAnimationFrame(doFit);
-
-    // ResizeObserver for container size changes
-    const observer = new ResizeObserver(() => {
-      requestAnimationFrame(doFit);
-    });
-
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
-
-    return () => observer.disconnect();
-  }, [isActive]);
-
-  // ── Focus terminal when tab becomes active ──────────────────────────
-  useEffect(() => {
-    if (isActive && termRef.current) {
-      termRef.current.focus();
-    }
-  }, [isActive]);
-
-  return (
-    <div
-      ref={containerRef}
-      style={{
-        width: '100%',
-        height: '100%',
-        padding: '4px 0 0 8px',
-        background: 'var(--bg-canvas)',
-      }}
-    />
-  );
+const XTERM_THEME = {
+  background: '#0a0b0f',
+  foreground: '#e8e6e1',
+  cursor: '#d4a84b',
+  cursorAccent: '#0a0b0f',
+  selectionBackground: 'rgba(212, 168, 75, 0.28)',
+  black: '#0a0b0f',
+  red: '#e05d55',
+  green: '#3fad7f',
+  yellow: '#d4a84b',
+  blue: '#6ea8c9',
+  magenta: '#b892d4',
+  cyan: '#6ea8c9',
+  white: '#e8e6e1',
+  brightBlack: '#6d6c76',
+  brightRed: '#f07a72',
+  brightGreen: '#5cc797',
+  brightYellow: '#e0b85c',
+  brightBlue: '#8cc0dd',
+  brightMagenta: '#caa8e6',
+  brightCyan: '#8cc0dd',
+  brightWhite: '#ffffff',
 };
 
-export default XTerminal;
+export default function XTerminal({ projectId, visible }) {
+  const hostRef = useRef(null);
+  const termRef = useRef(null);
+  const fitRef = useRef(null);
+
+  useEffect(() => {
+    if (!projectId || !hostRef.current) return undefined;
+    let disposed = false;
+
+    const term = new Terminal({
+      convertEol: true,
+      fontFamily: "'IBM Plex Mono', 'Cascadia Code', Consolas, monospace",
+      fontSize: 13,
+      lineHeight: 1.35,
+      cursorBlink: true,
+      scrollback: 5000,
+      theme: XTERM_THEME,
+    });
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    term.loadAddon(new WebLinksAddon());
+    term.open(hostRef.current);
+    try { fit.fit(); } catch { /* host not measured yet */ }
+
+    termRef.current = term;
+    fitRef.current = fit;
+
+    term.onData((data) => termSession.writeInput(data));
+
+    const unsubscribe = termSession.subscribe((msg) => {
+      if (disposed) return;
+      switch (msg.type) {
+        case 'replay':
+        case 'output':
+          term.write(msg.data || '');
+          break;
+        case 'connected':
+          setTimeout(() => {
+            if (disposed) return;
+            try {
+              fit.fit();
+              termSession.resize(term.cols, term.rows);
+            } catch { /* ignore */ }
+          }, 40);
+          break;
+        case 'exit':
+          term.write(`\r\n\x1b[2m[process exited with code ${msg.code ?? 0}]\x1b[0m\r\n`);
+          break;
+        case 'error':
+          term.write(`\r\n\x1b[31m[terminal error] ${msg.message}\x1b[0m\r\n`);
+          break;
+        case 'closed':
+          term.write('\r\n\x1b[2m[disconnected]\x1b[0m\r\n');
+          break;
+        default:
+          break;
+      }
+    });
+
+    termSession.ensureSession(projectId).catch((err) => {
+      if (!disposed) term.write(`\r\n\x1b[31mFailed to start terminal: ${err.message}\x1b[0m\r\n`);
+    });
+
+    let resizeObserver;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        try {
+          fit.fit();
+          termSession.resize(term.cols, term.rows);
+        } catch { /* host may be hidden */ }
+      });
+      resizeObserver.observe(hostRef.current);
+    }
+
+    return () => {
+      disposed = true;
+      unsubscribe();
+      resizeObserver?.disconnect();
+      term.dispose();
+      termSession.scheduleRelease();
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!visible || !fitRef.current) return;
+    const id = requestAnimationFrame(() => {
+      try {
+        fitRef.current.fit();
+        if (termRef.current) termSession.resize(termRef.current.cols, termRef.current.rows);
+      } catch { /* ignore */ }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [visible]);
+
+  return <div ref={hostRef} className="dock-terminal-surface" />;
+}

@@ -29,7 +29,17 @@ export const executeFile = async (language, fileName, code, stdin = '') => {
  * @returns {EventSource} — caller can close with .close()
  */
 export const streamExecution = (executionId, callbacks) => {
-  const url = `/api/execute/${executionId}/stream`;
+  // EventSource cannot send Authorization headers — pass token as query for gateway
+  const token = (() => {
+    try {
+      // Prefer memory token via a lightweight peek from local session if present
+      return sessionStorage.getItem('orion_access_token') || '';
+    } catch {
+      return '';
+    }
+  })();
+  const qs = token ? `?token=${encodeURIComponent(token)}` : '';
+  const url = `/api/execute/${executionId}/stream${qs}`;
   const eventSource = new EventSource(url, { withCredentials: true });
 
   eventSource.addEventListener('stdout', (e) => {

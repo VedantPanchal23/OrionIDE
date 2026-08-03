@@ -1,175 +1,58 @@
 /**
- * Orion IDE — Editor Tabs Component
- *
- * Tab bar for open files with:
- * - Active tab highlighting with accent underline
- * - Dirty indicator (dot)
- * - Close button with unsaved confirmation (custom modal, not window.confirm)
- * - Middle-click to close
- * - Horizontal scrolling for many tabs
- * - Design token styling
+ * Orion IDE — open file tabs
  */
 
-import React, { useRef } from 'react';
-import { useEditor } from '../../context/EditorContext';
-import { getLanguageFromFileName } from '../../utils/languageMap';
-import ConfirmModal from '../ConfirmModal/ConfirmModal';
-
+import { useState } from 'react';
 import { X } from 'lucide-react';
+import { useEditor } from '../../context/EditorContext';
+import { getLanguageAbbr } from '../../utils/languageMap';
+import ConfirmModal from '../ui/ConfirmModal';
 
-const EditorTabs = () => {
+export default function EditorTabs() {
   const { openFiles, activeFileId, switchTab, closeFile } = useEditor();
-  const tabsRef = useRef(null);
-  const confirmRef = useRef(null);
-
-  const handleClose = async (e, fileId) => {
-    e.stopPropagation();
-    const file = openFiles.find((f) => f.fileId === fileId);
-    if (file?.isDirty) {
-      const confirmed = await confirmRef.current?.show({
-        title: 'Unsaved Changes',
-        message: `"${file.fileName}" has unsaved changes. Are you sure you want to close it?`,
-        danger: true,
-        confirmLabel: 'Close Anyway',
-        cancelLabel: 'Keep Open',
-      });
-      if (!confirmed) return;
-    }
-    closeFile(fileId);
-  };
-
-  const handleMiddleClick = (e, fileId) => {
-    if (e.button === 1) {
-      e.preventDefault();
-      handleClose(e, fileId);
-    }
-  };
-
-  const handleWheel = (e) => {
-    if (tabsRef.current) {
-      tabsRef.current.scrollLeft += e.deltaY;
-    }
-  };
+  const [pendingClose, setPendingClose] = useState(null);
 
   if (openFiles.length === 0) return null;
 
+  const requestClose = (e, file) => {
+    e.stopPropagation();
+    if (file.isDirty) setPendingClose(file);
+    else closeFile(file.id);
+  };
+
   return (
-    <>
-      <ConfirmModal ref={confirmRef} />
-      <div
-        ref={tabsRef}
-        onWheel={handleWheel}
-        style={{
-          display: 'flex',
-          background: 'var(--bg-inset)',
-          overflowX: 'auto',
-          overflowY: 'hidden',
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none',
-          flexShrink: 0,
-          height: 35,
-        }}
-      >
-        {openFiles.map((file) => {
-          const isActive = file.fileId === activeFileId;
-          const langInfo = getLanguageFromFileName(file.fileName);
+    <div className="editor-tabs">
+      {openFiles.map((f) => (
+        <div
+          key={f.id}
+          className={`editor-tab ${f.id === activeFileId ? 'active' : ''}`}
+          onClick={() => switchTab(f.id)}
+          onMouseDown={(e) => { if (e.button === 1) requestClose(e, f); }}
+          title={f.name}
+        >
+          <span className="editor-tab-label">{f.name}</span>
+          <span className="editor-tab-ext">{getLanguageAbbr(f.name)}</span>
+          {f.isDirty && <span className="editor-tab-dirty" />}
+          <button
+            type="button"
+            className="editor-tab-close"
+            onClick={(e) => requestClose(e, f)}
+            aria-label={`Close ${f.name}`}
+          >
+            <X size={11} />
+          </button>
+        </div>
+      ))}
 
-          return (
-            <div
-              key={file.fileId}
-              onClick={() => switchTab(file.fileId)}
-              onMouseDown={(e) => handleMiddleClick(e, file.fileId)}
-              className={`tab-container ${isActive ? 'active' : ''}`}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '0 12px',
-                height: '100%',
-                cursor: 'pointer',
-                background: isActive ? 'var(--bg-default)' : 'transparent',
-                borderTop: isActive ? '1px solid var(--accent-blue)' : '1px solid transparent',
-                borderBottom: 'none',
-                borderRight: '1px solid var(--border-default)',
-                color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-                fontSize: 'var(--font-size-md)',
-                fontFamily: 'var(--font-ui)',
-                fontWeight: isActive ? 500 : 400,
-                whiteSpace: 'nowrap',
-                transition: 'background 50ms ease, color 50ms ease',
-                userSelect: 'none',
-                minWidth: 0,
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.background = 'var(--bg-subtle)';
-                  e.currentTarget.style.color = 'var(--text-primary)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.color = 'var(--text-muted)';
-                }
-              }}
-            >
-              {/* Language icon */}
-              <span style={{
-                fontSize: 9, fontWeight: 700, fontFamily: 'var(--font-mono)',
-                color: langInfo.color, letterSpacing: '-0.3px', lineHeight: 1, flexShrink: 0,
-                padding: '2px 4px', background: 'rgba(255,255,255,0.03)', borderRadius: 3,
-                border: '1px solid rgba(255,255,255,0.05)',
-              }}>
-                {langInfo.icon}
-              </span>
-
-              {/* File name */}
-              <span style={{
-                overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140,
-              }}>
-                {file.fileName}
-              </span>
-
-              {/* Dirty indicator */}
-              {file.isDirty && (
-                <span style={{
-                  width: 6, height: 6, borderRadius: '50%',
-                  background: 'var(--accent-yellow)', flexShrink: 0,
-                  boxShadow: '0 0 6px var(--accent-yellow)',
-                }} title="Unsaved changes" />
-              )}
-
-              {/* Close button */}
-              <button
-                onClick={(e) => handleClose(e, file.fileId)}
-                className="tab-close-btn"
-                style={{
-                  background: 'none', border: 'none', color: 'var(--text-muted)',
-                  cursor: 'pointer', padding: 2, borderRadius: 4,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  width: 16, height: 16, marginLeft: 2,
-                  transition: 'background 50ms ease, color 50ms ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.stopPropagation();
-                  e.currentTarget.style.background = 'var(--bg-emphasis)';
-                  e.currentTarget.style.color = 'var(--accent-red-emphasis)';
-                }}
-                onMouseLeave={(e) => {
-                  e.stopPropagation();
-                  e.currentTarget.style.background = 'none';
-                  e.currentTarget.style.color = 'var(--text-muted)';
-                }}
-                title="Close"
-              >
-                <X size={10} />
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </>
+      <ConfirmModal
+        open={Boolean(pendingClose)}
+        title={`Close "${pendingClose?.name}"?`}
+        message="You have unsaved changes. Closing now will discard them (Drive's auto-saved buffer keeps the last synced version)."
+        confirmLabel="Discard & close"
+        danger
+        onConfirm={() => { closeFile(pendingClose.id); setPendingClose(null); }}
+        onCancel={() => setPendingClose(null)}
+      />
+    </div>
   );
-};
-
-export default EditorTabs;
+}

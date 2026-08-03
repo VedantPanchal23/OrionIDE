@@ -1,277 +1,216 @@
 /**
- * Orion IDE — Editor Context
+ * Orion IDE — Editor session context
  *
- * Provides: openFiles, activeFileId, openFile(), closeFile(), saveFile(),
- *           updateContent(), saveStatus
- *
- * Used by FileTree to open files, Editor to switch tabs, Topbar for Run.
+ * Project-scoped: the parent renders `<EditorProvider key={projectId}>`,
+ * so switching projects remounts this provider and every tab, cursor
+ * position and save state resets naturally — no cross-project leakage.
  */
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { driveService } from '../services/driveService';
-import { editorService } from '../services/editorService';
-import { getLanguageFromFileName } from '../utils/languageMap';
+import {
+  createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
+} from 'react';
+import * as driveService from '../services/driveService';
+import { getMonacoLanguage } from '../utils/languageMap';
 
 const EditorContext = createContext(null);
 
-export const useEditor = () => {
-  const ctx = useContext(EditorContext);
-  if (!ctx) throw new Error('useEditor must be used within EditorProvider');
-  return ctx;
-};
+const AUTOSAVE_DELAY = 1100;
 
-export const EditorProvider = ({ children }) => {
+export function EditorProvider({ projectId, children }) {
   const [openFiles, setOpenFiles] = useState([]);
   const [activeFileId, setActiveFileId] = useState(null);
-  const [saveStatus, setSaveStatus] = useState('idle'); // idle | saving | saved | error
+  const [saveStatus, setSaveStatus] = useState({});
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
+  const [pendingReveal, setPendingReveal] = useState(null);
 
-  // Registry of reveal callbacks: fileId → fn(lineNumber)
-  const revealLineRegistry = useRef({});
-
-  // Refs for latest state access (avoids stale closure issues)
   const openFilesRef = useRef(openFiles);
   const activeFileIdRef = useRef(activeFileId);
-  const saveTimeoutRef = useRef(null);
-  const writeBufferTimers = useRef(new Map()); // fileId → timer for debounced writes
+  const autosaveTimers = useRef(new Map());
+  const revealFns = useRef(new Map());
 
-  // Keep refs in sync
   useEffect(() => { openFilesRef.current = openFiles; }, [openFiles]);
   useEffect(() => { activeFileIdRef.current = activeFileId; }, [activeFileId]);
 
-  // ── Restore session on mount ────────────────────────────────────────
-  useEffect(() => {
-    const restoreSession = async () => {
-      try {
-        const res = await editorService.getSession();
-        const session = res.data?.data;
-        if (session && session.openFiles?.length > 0) {
-          setOpenFiles(session.openFiles.map((f) => ({
-            fileId: f.fileId,
-            fileName: f.fileName,
-            language: f.language || getLanguageFromFileName(f.fileName).monacoLanguage,
-            content: null, // Will be loaded when tab is activated
-            isDirty: false,
-          })));
-          setActiveFileId(session.activeFileId);
-        }
-      } catch {
-        // No session to restore — that's OK
-      }
-    };
-    restoreSession();
+  useEffect(() => () => {
+    autosaveTimers.current.forEach((t) => clearTimeout(t));
   }, []);
 
-  // Track files currently being opened to prevent duplicate concurrent opens
-  const openingFilesRef = useRef(new Set());
-
-  // ── Open a file ────────────────────────────────────────────────────
-  const openFile = useCallback(async (fileId, fileName) => {
-    // Check if already open via ref (fast path)
-    const existing = openFilesRef.current.find((f) => f.fileId === fileId);
+  const openFile = useCallback(async (fileMeta) => {
+    const existing = openFilesRef.current.find((f) => f.id === fileMeta.id);
     if (existing) {
-      setActiveFileId(fileId);
-      // If content was never loaded (restored session), load it now
-      if (existing.content === null) {
-        try {
-          const res = await driveService.readFile(fileId);
-          const content = res.data?.data?.content ?? '';
-          setOpenFiles((prev) =>
-            prev.map((f) => f.fileId === fileId ? { ...f, content } : f)
-          );
-        } catch {
-          // Leave content as empty on error
-          setOpenFiles((prev) =>
-            prev.map((f) => f.fileId === fileId && f.content === null ? { ...f, content: '' } : f)
-          );
-        }
-      }
-      editorService.setActiveFile(fileId).catch(() => {});
-      return;
+      setActiveFileId(fileMeta.id);
+      return existing;
     }
 
-    // Prevent concurrent opens of the same file (race condition guard)
-    if (openingFilesRef.current.has(fileId)) return;
-    openingFilesRef.current.add(fileId);
-
-    const langInfo = getLanguageFromFileName(fileName);
-
-    // Load content from Drive
-    let content = '';
-    try {
-      const res = await driveService.readFile(fileId);
-      content = res.data?.data?.content ?? '';
-    } catch {
-      content = '';
-    }
-
-    const newFile = {
-      fileId,
-      fileName,
-      language: langInfo.monacoLanguage,
-      content,
+    const language = fileMeta.language || getMonacoLanguage(fileMeta.name);
+    const placeholder = {
+      id: fileMeta.id,
+      name: fileMeta.name,
+      parentId: fileMeta.parentId ?? null,
+      language,
+      content: '',
+      originalContent: '',
       isDirty: false,
+      loading: true,
     };
+    setOpenFiles((prev) => [...prev, placeholder]);
+    setActiveFileId(fileMeta.id);
 
-    // Use functional setState to deduplicate (handles race between concurrent opens)
+    try {
+      const res = await driveService.readFile(fileMeta.id);
+      const payload = res.data?.data || {};
+      const raw = payload.content;
+      const text = typeof raw === 'string' ? raw : '';
+      setOpenFiles((prev) => prev.map((f) => (
+        f.id === fileMeta.id ? { ...f, content: text, originalContent: text, loading: false } : f
+      )));
+      return { ...placeholder, content: text, loading: false };
+    } catch (err) {
+      setOpenFiles((prev) => {
+        const idx = prev.findIndex((f) => f.id === fileMeta.id);
+        if (idx === -1) return prev;
+        const next = prev.filter((f) => f.id !== fileMeta.id);
+        if (activeFileIdRef.current === fileMeta.id) {
+          const neighbor = next[idx] || next[idx - 1] || next[0] || null;
+          setActiveFileId(neighbor ? neighbor.id : null);
+        }
+        return next;
+      });
+      const message = err?.response?.data?.error?.message || err.message || 'Failed to open file';
+      const wrapped = new Error(message);
+      wrapped.original = err;
+      throw wrapped;
+    }
+  }, []);
+
+  const closeFile = useCallback((id) => {
     setOpenFiles((prev) => {
-      if (prev.some((f) => f.fileId === fileId)) return prev;
-      return [...prev, newFile];
+      const idx = prev.findIndex((f) => f.id === id);
+      if (idx === -1) return prev;
+      const next = prev.filter((f) => f.id !== id);
+      if (activeFileIdRef.current === id) {
+        const neighbor = next[idx] || next[idx - 1] || next[0] || null;
+        setActiveFileId(neighbor ? neighbor.id : null);
+      }
+      return next;
     });
-    setActiveFileId(fileId);
-
-    // Sync with backend session (fire and forget)
-    editorService.openFile(fileId, fileName, langInfo.monacoLanguage).catch(() => {});
-
-    openingFilesRef.current.delete(fileId);
+    revealFns.current.delete(id);
+    const timer = autosaveTimers.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      autosaveTimers.current.delete(id);
+    }
+    setSaveStatus((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   }, []);
 
-  // ── Register editor reveal callback ────────────────────────────────
-  const registerReveal = useCallback((fileId, fn) => {
-    revealLineRegistry.current[fileId] = fn;
-    return () => { delete revealLineRegistry.current[fileId]; };
+  const switchTab = useCallback((id) => {
+    if (openFilesRef.current.some((f) => f.id === id)) setActiveFileId(id);
   }, []);
 
-  // ── Reveal a line in a file (opens if needed) ───────────────────────
-  const revealLine = useCallback(async (fileId, fileName, lineNumber) => {
-    // Open/switch to file first
-    await openFile(fileId, fileName);
-    // Give Monaco time to mount if this was a new file open
-    const reveal = () => {
-      const fn = revealLineRegistry.current[fileId];
-      if (fn) fn(lineNumber);
+  const scheduleAutosave = useCallback((id, content) => {
+    const existing = autosaveTimers.current.get(id);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      driveService.updateFile(id, content).catch(() => { /* buffered — best effort */ });
+      autosaveTimers.current.delete(id);
+    }, AUTOSAVE_DELAY);
+    autosaveTimers.current.set(id, timer);
+  }, []);
+
+  const updateContent = useCallback((id, newContent) => {
+    setOpenFiles((prev) => prev.map((f) => (
+      f.id === id ? { ...f, content: newContent, isDirty: newContent !== f.originalContent } : f
+    )));
+    scheduleAutosave(id, newContent);
+  }, [scheduleAutosave]);
+
+  const saveFile = useCallback(async (id) => {
+    const file = openFilesRef.current.find((f) => f.id === id);
+    if (!file) return;
+    setSaveStatus((prev) => ({ ...prev, [id]: 'saving' }));
+    try {
+      await driveService.flushFile(id, file.content);
+      setOpenFiles((prev) => prev.map((f) => (
+        f.id === id ? { ...f, originalContent: f.content, isDirty: false } : f
+      )));
+      setSaveStatus((prev) => ({ ...prev, [id]: 'saved' }));
+      setTimeout(() => {
+        setSaveStatus((prev) => (prev[id] === 'saved' ? { ...prev, [id]: 'idle' } : prev));
+      }, 1800);
+    } catch (err) {
+      setSaveStatus((prev) => ({ ...prev, [id]: 'error' }));
+      throw err;
+    }
+  }, []);
+
+  const registerReveal = useCallback((id, fn) => {
+    if (fn) revealFns.current.set(id, fn);
+    else revealFns.current.delete(id);
+  }, []);
+
+  const revealLine = useCallback((fileOrId, line) => {
+    const id = typeof fileOrId === 'string' ? fileOrId : fileOrId.id;
+    const already = openFilesRef.current.find((f) => f.id === id);
+    const activate = () => {
+      setActiveFileId(id);
+      const fn = revealFns.current.get(id);
+      if (fn) {
+        fn(line);
+        setPendingReveal(null);
+      } else {
+        setPendingReveal({ fileId: id, line, nonce: Date.now() });
+      }
     };
-    // Defer slightly to ensure editor is mounted and active
-    setTimeout(reveal, 100);
+    if (already) {
+      activate();
+    } else if (typeof fileOrId === 'object' && fileOrId.name) {
+      openFile(fileOrId).then(activate).catch(() => {});
+    }
   }, [openFile]);
 
-  // ── Close a file ────────────────────────────────────────────────────
-  const closeFile = useCallback((fileId) => {
-    // Cancel any pending write buffer for this file
-    const timer = writeBufferTimers.current.get(fileId);
-    if (timer) {
-      clearTimeout(timer);
-      writeBufferTimers.current.delete(fileId);
-    }
-
-    setOpenFiles((prev) => {
-      const filtered = prev.filter((f) => f.fileId !== fileId);
-      // Use ref for current activeFileId to avoid stale closure
-      if (activeFileIdRef.current === fileId) {
-        const newActive = filtered.length > 0 ? filtered[filtered.length - 1].fileId : null;
-        setActiveFileId(newActive);
-      }
-      return filtered;
-    });
-
-    editorService.closeFile(fileId).catch(() => {});
-  }, []); // No dependencies — uses refs
-
-  // ── Update content (from editor onChange — already debounced by Editor.jsx) ──
-  const updateContent = useCallback((fileId, newContent) => {
-    // Update state immediately (for UI responsiveness)
-    setOpenFiles((prev) =>
-      prev.map((f) =>
-        f.fileId === fileId ? { ...f, content: newContent, isDirty: true } : f
-      )
-    );
-
-    // Debounce the API write — cancel previous timer for this file
-    const existingTimer = writeBufferTimers.current.get(fileId);
-    if (existingTimer) clearTimeout(existingTimer);
-
-    writeBufferTimers.current.set(fileId,
-      setTimeout(() => {
-        driveService.updateFile(fileId, newContent).catch(() => {});
-        writeBufferTimers.current.delete(fileId);
-      }, 2000) // 2-second debounce on top of Editor's 500ms
-    );
-
-    editorService.markDirty(fileId, true).catch(() => {});
+  const consumeReveal = useCallback((id) => {
+    setPendingReveal((prev) => (prev && prev.fileId === id ? null : prev));
   }, []);
 
-  // ── Save file (Ctrl+S — immediate flush) ────────────────────────────
-  const saveFile = useCallback(async (fileId) => {
-    // Read latest content from ref to avoid stale closure
-    const file = openFilesRef.current.find((f) => f.fileId === fileId);
-    if (!file || file.content === null) return;
-
-    // Cancel any pending write buffer — we're flushing now
-    const timer = writeBufferTimers.current.get(fileId);
-    if (timer) {
-      clearTimeout(timer);
-      writeBufferTimers.current.delete(fileId);
-    }
-
-    setSaveStatus('saving');
-    try {
-      await driveService.flushFile(fileId, file.content);
-      setOpenFiles((prev) =>
-        prev.map((f) =>
-          f.fileId === fileId ? { ...f, isDirty: false } : f
-        )
-      );
-      editorService.markDirty(fileId, false).catch(() => {});
-      setSaveStatus('saved');
-
-      // Reset status after 2s
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = setTimeout(() => setSaveStatus('idle'), 2000);
-    } catch {
-      setSaveStatus('error');
-    }
-  }, []); // No dependencies — uses refs
-
-  // ── Switch active tab ───────────────────────────────────────────────
-  const switchTab = useCallback((fileId) => {
-    setActiveFileId(fileId);
-
-    // If content was never loaded (restored session), load it now
-    const file = openFilesRef.current.find((f) => f.fileId === fileId);
-    if (file && file.content === null) {
-      driveService.readFile(fileId).then((res) => {
-        const content = res.data?.data?.content ?? '';
-        setOpenFiles((prev) =>
-          prev.map((f) => f.fileId === fileId ? { ...f, content } : f)
-        );
-      }).catch(() => {
-        setOpenFiles((prev) =>
-          prev.map((f) => f.fileId === fileId && f.content === null ? { ...f, content: '' } : f)
-        );
-      });
-    }
-
-    editorService.setActiveFile(fileId).catch(() => {});
-  }, []);
-
-  // ── Cleanup all write buffer timers on unmount ──────────────────────
-  useEffect(() => {
-    return () => {
-      writeBufferTimers.current.forEach((timer) => clearTimeout(timer));
-      writeBufferTimers.current.clear();
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    };
-  }, []);
-
-  const activeFile = openFiles.find((f) => f.fileId === activeFileId) || null;
-
-  return (
-    <EditorContext.Provider value={{
-      openFiles,
-      activeFileId,
-      activeFile,
-      saveStatus,
-      cursorPosition,
-      setCursorPosition,
-      openFile,
-      closeFile,
-      updateContent,
-      saveFile,
-      switchTab,
-      registerReveal,
-      revealLine,
-    }}>
-      {children}
-    </EditorContext.Provider>
+  const activeFile = useMemo(
+    () => openFiles.find((f) => f.id === activeFileId) || null,
+    [openFiles, activeFileId],
   );
-};
+
+  const value = useMemo(() => ({
+    projectId,
+    openFiles,
+    activeFileId,
+    activeFile,
+    openFile,
+    closeFile,
+    switchTab,
+    updateContent,
+    saveFile,
+    saveStatus,
+    cursorPosition,
+    setCursorPosition,
+    registerReveal,
+    revealLine,
+    pendingReveal,
+    consumeReveal,
+  }), [
+    projectId, openFiles, activeFileId, activeFile, openFile, closeFile, switchTab,
+    updateContent, saveFile, saveStatus, cursorPosition, registerReveal, revealLine,
+    pendingReveal, consumeReveal,
+  ]);
+
+  return <EditorContext.Provider value={value}>{children}</EditorContext.Provider>;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components -- hook is colocated with its provider
+export function useEditor() {
+  const ctx = useContext(EditorContext);
+  if (!ctx) throw new Error('useEditor must be used within EditorProvider');
+  return ctx;
+}
