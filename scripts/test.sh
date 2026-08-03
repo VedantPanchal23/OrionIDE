@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 
 PASS=0
 FAIL=0
-SERVICES=("api-gateway" "auth-service" "drive-service" "editor-service" "execution-service" "agent-service" "notification-service")
+SERVICES=("api-gateway" "auth-service" "drive-service" "editor-service" "execution-service" "agent-service" "notification-service" "terminal-service")
 
 echo "========================================"
 echo "  Orion IDE — Test Suite"

@@ -1,0 +1,118 @@
+# Orion IDE — Backend CI
+name: backend-ci
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  test:
+    name: Unit tests (all services)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      postgres:
+        image: postgres:16-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: orion
+          POSTGRES_PASSWORD: orion
+          POSTGRES_DB: orion
+        options: >-
+          --health-cmd "pg_isready -U orion -d orion"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      REDIS_URL: redis://127.0.0.1:6379
+      DATABASE_URL: postgres://orion:orion@127.0.0.1:5432/orion
+      JWT_SECRET: ci-jwt-secret-for-unit-tests-only-64-chars-long-minimum-required-xx
+      JWT_REFRESH_SECRET: ci-refresh-secret-for-unit-tests-only-64-chars-long-minimum
+      JWT_ACCESS_EXPIRY: 15m
+      JWT_REFRESH_EXPIRY: 7d
+      INTERNAL_SECRET: ci-internal-secret-min-32-chars-long!!
+      DRIVE_SERVICE_SECRET: ci-internal-secret-min-32-chars-long!!
+      GROQ_API_KEY: test-groq-key
+      OPENROUTER_API_KEY: test-openrouter-key
+      AUTH_SERVICE_URL: http://localhost:3001
+      TERMINAL_SERVICE_URL: http://localhost:3007
+      NOTIFICATION_SERVICE_URL: http://localhost:3006
+      DRIVE_SERVICE_URL: http://localhost:3002
+      EXECUTION_SERVICE_URL: http://localhost:3004
+      PISTON_API_URL: http://localhost:2000/api/v2
+      POSTGRES_USER: orion
+      POSTGRES_PASSWORD: orion
+      POSTGRES_DB: orion
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            services/api-gateway/package-lock.json
+            services/auth-service/package-lock.json
+            services/drive-service/package-lock.json
+            services/editor-service/package-lock.json
+            services/execution-service/package-lock.json
+            services/agent-service/package-lock.json
+            services/notification-service/package-lock.json
+            services/terminal-service/package-lock.json
+
+      - name: Install & test each service
+        shell: bash
+        run: |
+          set -e
+          SERVICES=(api-gateway auth-service drive-service editor-service execution-service agent-service notification-service terminal-service)
+          FAIL=0
+          for svc in "${SERVICES[@]}"; do
+            echo "::group::$svc"
+            cd "services/$svc"
+            npm ci --no-audit --no-fund
+            if ls tests/*.test.js 1>/dev/null 2>&1; then
+              if ! npx jest --ci --forceExit --no-coverage; then
+                echo "::error::$svc tests failed"
+                FAIL=1
+              fi
+            else
+              echo "No tests — skip"
+            fi
+            cd ../..
+            echo "::endgroup::"
+          done
+          exit $FAIL
+
+  smoke:
+    name: Happy-path smoke (optional)
+    runs-on: ubuntu-latest
+    needs: test
+    if: ${{ secrets.ORION_ACCESS_TOKEN != '' }}
+    timeout-minutes: 15
+    env:
+      ORION_ACCESS_TOKEN: ${{ secrets.ORION_ACCESS_TOKEN }}
+      GATEWAY_URL: ${{ secrets.STAGING_GATEWAY_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run golden-path smoke against staging
+        run: node scripts/smoke-happy-path.mjs
+        # Requires STAGING_GATEWAY_URL + ORION_ACCESS_TOKEN secrets pointing at a live stack

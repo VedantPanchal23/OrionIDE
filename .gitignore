@@ -5,6 +5,11 @@ node_modules/
 .env
 .env.local
 .env.*.local
+backups/
+*.sql.gz
+infrastructure/nginx/certs/*.pem
+infrastructure/nginx/certs/*.key
+!infrastructure/nginx/certs/README.md
 
 # Build outputs
 frontend/build/

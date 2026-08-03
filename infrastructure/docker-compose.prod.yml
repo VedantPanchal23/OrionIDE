@@ -20,6 +20,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
     depends_on:
       api-gateway:
         condition: service_healthy
@@ -38,12 +39,16 @@ services:
     image: redis:7-alpine
     container_name: orion-redis
     restart: unless-stopped
-    command: redis-server /usr/local/etc/redis/redis.conf
+    env_file:
+      - ../.env
+    command: >
+      sh -c 'redis-server /usr/local/etc/redis/redis.conf
+      --requirepass "$${REDIS_PASSWORD}"'
     volumes:
       - redis-data:/data
       - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -54,6 +59,33 @@ services:
         limits:
           cpus: '0.5'
           memory: 256M
+
+  # ── Postgres ────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: orion-postgres
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-orion}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-orion}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-orion} -d $${POSTGRES_DB:-orion}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - orion-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
 
   # ── API Gateway ─────────────────────────────────────────────────────────
   api-gateway:
@@ -67,6 +99,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - TERMINAL_SERVICE_URL=http://terminal-service:3007
+      - PISTON_API_URL=http://piston:2000/api/v2
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
       interval: 30s
@@ -75,6 +109,7 @@ services:
       retries: 3
     depends_on:
       - redis
+      - terminal-service
     networks:
       - orion-network
     logging:
@@ -87,7 +122,6 @@ services:
         limits:
           cpus: '0.5'
           memory: 256M
-
 
   # ── Auth Service ────────────────────────────────────────────────────────
   auth-service:
@@ -109,6 +143,7 @@ services:
       retries: 3
     depends_on:
       - redis
+      - postgres
     networks:
       - orion-network
     logging:
@@ -200,6 +235,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3004
+      - PISTON_API_URL=http://piston:2000/api/v2
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3004/health"]
       interval: 30s
@@ -285,6 +321,43 @@ services:
           cpus: '0.5'
           memory: 256M
 
+  # ── Terminal Service ──────────────────────────────────────────────────
+  terminal-service:
+    build:
+      context: ../services/terminal-service
+      dockerfile: Dockerfile
+    container_name: orion-terminal-service
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      - NODE_ENV=production
+      - PORT=3007
+      - TERMINAL_WORKSPACE_ROOT=/workspace
+      - DRIVE_SERVICE_URL=http://drive-service:3002
+    volumes:
+      - terminal-workspaces:/workspace
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3007/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    depends_on:
+      - drive-service
+    networks:
+      - orion-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
   # ── Frontend ────────────────────────────────────────────────────────────
   frontend:
     build:
@@ -337,5 +410,9 @@ networks:
 volumes:
   redis-data:
     name: orion-redis-data
+  postgres-data:
+    name: orion-postgres-data
   piston-packages:
     name: orion-piston-packages
+  terminal-workspaces:
+    name: orion-terminal-workspaces

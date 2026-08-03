@@ -1,0 +1,38 @@
+# Orion IDE — Staging overlay
+# Usage:
+#   docker compose -f docker-compose.dev.yml -f infrastructure/docker-compose.staging.yml up -d
+#
+# Staging policy: agents on (Pro-gated), Yjs/debugger off until Drive sync is proven.
+
+services:
+  api-gateway:
+    environment:
+      NODE_ENV: staging
+      ENABLE_YJS_COLLAB: "false"
+      ENABLE_DEBUGGER_API: "false"
+      ENABLE_AGENTS: "true"
+
+  auth-service:
+    environment:
+      NODE_ENV: staging
+
+  drive-service:
+    environment:
+      NODE_ENV: staging
+      DRIVE_API_RETRIES: "5"
+
+  editor-service:
+    environment:
+      NODE_ENV: staging
+      ENABLE_YJS_COLLAB: "false"
+      ENABLE_DEBUGGER_API: "false"
+
+  agent-service:
+    environment:
+      NODE_ENV: staging
+
+  terminal-service:
+    environment:
+      NODE_ENV: staging
+      TERMINAL_SYNC_RETRIES: "5"
+      TERMINAL_SYNC_CONFLICT_STRATEGY: skip
