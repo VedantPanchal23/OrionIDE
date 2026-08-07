@@ -1,0 +1,24 @@
+# Repo root — keep Docker build contexts small
+.git
+.github
+**/node_modules
+**/dist
+**/coverage
+**/.vitest
+**/.turbo
+**/__tests__
+**/*.test.js
+**/*.test.jsx
+**/e2e
+workspace
+*.md
+docs
+.env
+.env.*
+!.env.example
+agent-transcripts
+.cursor
+**/.DS_Store
+**/Thumbs.db
+infrastructure/nginx/certs/*.pem
+infrastructure/nginx/certs/*.key
