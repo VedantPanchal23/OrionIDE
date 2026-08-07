@@ -1,0 +1,22 @@
+# Build context: repository root
+# Full deps (incl. nodemon) for hot-reload development.
+ARG SERVICE=api-gateway
+ARG PORT=3000
+
+FROM node:18-alpine
+ARG SERVICE
+ARG PORT
+ENV NODE_ENV=development
+ENV PORT=${PORT}
+WORKDIR /app
+
+RUN apk add --no-cache wget python3 make g++
+
+COPY services/${SERVICE}/package*.json ./
+RUN npm ci
+
+COPY services/${SERVICE}/src ./src
+COPY shared /shared
+
+EXPOSE ${PORT}
+CMD ["npx", "nodemon", "src/app.js"]

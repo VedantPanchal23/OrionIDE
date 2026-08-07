@@ -1,0 +1,37 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Orion IDE — Service image (monorepo root as build context)
+# ARG SERVICE = api-gateway | auth-service | …
+# ─────────────────────────────────────────────────────────────────────────────
+ARG SERVICE=api-gateway
+ARG PORT=3000
+
+FROM node:18-alpine AS builder
+ARG SERVICE
+WORKDIR /build
+COPY services/${SERVICE}/package*.json ./
+RUN npm ci --omit=dev && cp -R node_modules /prod_modules
+
+FROM node:18-alpine AS runner
+ARG SERVICE
+ARG PORT
+ENV NODE_ENV=production
+ENV PORT=${PORT}
+WORKDIR /app
+
+RUN addgroup -S orion && adduser -S orion -G orion -h /home/orion \
+  && apk add --no-cache wget
+
+COPY --from=builder /prod_modules ./node_modules
+COPY services/${SERVICE}/src ./src
+# Required by require('../../../shared/...') from /app/src
+COPY shared /shared
+
+RUN chown -R orion:orion /app /shared
+USER orion
+
+EXPOSE ${PORT}
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+  CMD wget -qO- http://localhost:${PORT}/health || exit 1
+
+CMD ["node", "src/app.js"]
