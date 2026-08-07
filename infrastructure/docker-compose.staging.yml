@@ -2,7 +2,8 @@
 # Usage:
 #   docker compose -f docker-compose.dev.yml -f infrastructure/docker-compose.staging.yml up -d
 #
-# Staging policy: agents on (Pro-gated), Yjs/debugger off until Drive sync is proven.
+# Staging: keep Yjs off; debugger optional (default off here until DAP+workspace sync is validated).
+# Agents stay on; free-plan access is controlled by ENABLE_AGENTS_ON_FREE / plans.js (OSS same-UI).
 
 services:
   api-gateway:
