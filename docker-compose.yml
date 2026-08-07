@@ -1,0 +1,372 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Orion IDE — All-in-one Docker Compose
+# ─────────────────────────────────────────────────────────────────────────────
+# Everything in one file: frontend + nginx + API gateway + all microservices
+# + Redis + Postgres + Piston.
+#
+#   cp .env.example .env   # fill Google / JWT / Redis / Postgres secrets
+#   docker compose up --build
+#
+# App (recommended):  http://localhost          (nginx → frontend + /api)
+# Frontend direct:    http://localhost:3010
+# API gateway:        http://localhost:3000
+#
+# Hot-reload alternative: docker compose -f docker-compose.dev.yml up --build
+# HTTPS production:       bash scripts/prod-ssl.sh
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── Edge ───────────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: orion-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./infrastructure/nginx/nginx.http.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks:
+      - orion-network
+
+  # ── Data stores ────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: orion-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    env_file: [.env]
+    command: >
+      sh -c 'redis-server --appendonly yes --protected-mode yes
+      --requirepass "$${REDIS_PASSWORD:-orion-dev-redis}"'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD:-orion-dev-redis}\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - orion-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: orion-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    env_file: [.env]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-orion}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orion-dev-pg}
+      POSTGRES_DB: ${POSTGRES_DB:-orion}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-orion} -d $${POSTGRES_DB:-orion}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - orion-network
+
+  # ── Application services ───────────────────────────────────────────────────
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: orion-api-gateway
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: [.env]
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      ENTITLEMENTS_FAIL_OPEN: ${ENTITLEMENTS_FAIL_OPEN:-false}
+      ENABLE_YJS_COLLAB: ${ENABLE_YJS_COLLAB:-false}
+      ENABLE_AGENTS: ${ENABLE_AGENTS:-true}
+      ENABLE_AGENTS_ON_FREE: ${ENABLE_AGENTS_ON_FREE:-true}
+      ENABLE_DEBUGGER_API: ${ENABLE_DEBUGGER_API:-true}
+      ENABLE_DEBUGGER_ON_FREE: ${ENABLE_DEBUGGER_ON_FREE:-true}
+      AUTH_SERVICE_URL: http://auth-service:3001
+      DRIVE_SERVICE_URL: http://drive-service:3002
+      EDITOR_SERVICE_URL: http://editor-service:3003
+      EXECUTION_SERVICE_URL: http://execution-service:3004
+      AGENT_SERVICE_URL: http://agent-service:3005
+      NOTIFICATION_SERVICE_URL: http://notification-service:3006
+      TERMINAL_SERVICE_URL: http://terminal-service:3007
+      LSP_SERVICE_URL: http://lsp-service:3008
+      PISTON_API_URL: http://piston:2000/api/v2
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 25s
+      retries: 3
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      drive-service:
+        condition: service_started
+      editor-service:
+        condition: service_started
+      execution-service:
+        condition: service_started
+      agent-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+      terminal-service:
+        condition: service_started
+      lsp-service:
+        condition: service_started
+    networks:
+      - orion-network
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    container_name: orion-auth-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file: [.env]
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
+      DATABASE_URL: postgres://${POSTGRES_USER:-orion}:${POSTGRES_PASSWORD:-orion-dev-pg}@postgres:5432/${POSTGRES_DB:-orion}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost/api/auth/google/callback}
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - orion-network
+
+  drive-service:
+    build:
+      context: .
+      dockerfile: services/drive-service/Dockerfile
+    container_name: orion-drive-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    env_file: [.env]
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - orion-network
+
+  editor-service:
+    build:
+      context: .
+      dockerfile: services/editor-service/Dockerfile
+    container_name: orion-editor-service
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    env_file: [.env]
+    environment:
+      NODE_ENV: production
+      PORT: 3003
+      ENABLE_YJS_COLLAB: ${ENABLE_YJS_COLLAB:-false}
+      ENABLE_DEBUGGER_API: ${ENABLE_DEBUGGER_API:-true}
+      TERMINAL_WORKSPACE_ROOT: /workspace
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
+    volumes:
+      - terminal-workspaces:/workspace
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - orion-network
+
+  execution-service:
+    build:
+      context: .
+      dockerfile: services/execution-service/Dockerfile
+    container_name: orion-execution-service
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    env_file: [.env]
+    environment:
+      NODE_ENV: production
+      PORT: 3004
+      PISTON_API_URL: http://piston:2000/api/v2
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+      piston:
+        condition: service_started
+    networks:
+      - orion-network
+
+  agent-service:
+    build:
+      context: .
+      dockerfile: services/agent-service/Dockerfile
+    container_name: orion-agent-service
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    env_file: [.env]
+    environment:
+      NODE_ENV: production
+      PORT: 3005
+      ENABLE_AGENTS: ${ENABLE_AGENTS:-true}
+      DRIVE_SERVICE_URL: http://drive-service:3002
+      EXECUTION_SERVICE_URL: http://execution-service:3004
+      NOTIFICATION_SERVICE_URL: http://notification-service:3006
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+      drive-service:
+        condition: service_started
+      execution-service:
+        condition: service_started
+    networks:
+      - orion-network
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    container_name: orion-notification-service
+    restart: unless-stopped
+    ports:
+      - "3006:3006"
+    env_file: [.env]
+    environment:
+      NODE_ENV: production
+      PORT: 3006
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - orion-network
+
+  terminal-service:
+    build:
+      context: .
+      dockerfile: services/terminal-service/Dockerfile
+    container_name: orion-terminal-service
+    restart: unless-stopped
+    ports:
+      - "3007:3007"
+    env_file: [.env]
+    environment:
+      NODE_ENV: production
+      PORT: 3007
+      TERMINAL_WORKSPACE_ROOT: /workspace
+      DRIVE_SERVICE_URL: http://drive-service:3002
+      AUTH_SERVICE_URL: http://auth-service:3001
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
+    volumes:
+      - terminal-workspaces:/workspace
+    depends_on:
+      redis:
+        condition: service_healthy
+      drive-service:
+        condition: service_started
+      auth-service:
+        condition: service_started
+    networks:
+      - orion-network
+
+  lsp-service:
+    build:
+      context: .
+      dockerfile: services/lsp-service/Dockerfile.dev
+    container_name: orion-lsp-service
+    restart: unless-stopped
+    ports:
+      - "3008:3008"
+    env_file: [.env]
+    environment:
+      NODE_ENV: production
+      PORT: 3008
+      TERMINAL_WORKSPACE_ROOT: /workspace
+    volumes:
+      - terminal-workspaces:/workspace
+    networks:
+      - orion-network
+
+  # ── Frontend (Vite build → nginx; also proxied by edge nginx on :80) ───────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: orion-frontend
+    restart: unless-stopped
+    ports:
+      - "3010:80"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 20s
+      timeout: 5s
+      start_period: 15s
+      retries: 5
+    networks:
+      - orion-network
+
+  # ── Code execution runtime ─────────────────────────────────────────────────
+  piston:
+    image: ghcr.io/engineer-man/piston
+    container_name: orion-piston
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "2000:2000"
+    tmpfs:
+      - /piston/jobs:exec,size=256m
+    environment:
+      OUTPUT_MAX_SIZE: "65536"
+      MAX_PROCESS_COUNT: "64"
+      RUN_TIMEOUT: "15000"
+      COMPILE_TIMEOUT: "15000"
+    volumes:
+      - piston-packages:/piston/packages
+    networks:
+      - orion-network
+
+networks:
+  orion-network:
+    name: orion-network
+    driver: bridge
+
+volumes:
+  redis-data:
+    name: orion-redis-data
+  postgres-data:
+    name: orion-postgres-data
+  piston-packages:
+    name: orion-piston-packages
+  terminal-workspaces:
+    name: orion-terminal-workspaces
