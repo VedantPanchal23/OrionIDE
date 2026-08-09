@@ -1,17 +1,10 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────────────────────
-# Orion IDE — Production Mode
+# Orion IDE — Full stack (HTTP, no TLS) — same as scripts/up.sh
 # ─────────────────────────────────────────────────────────────────────────────
+# Uses root docker-compose.yml (frontend + all services). For HTTPS:
+#   scripts/prod-ssl.sh  or  docker compose -f infrastructure/docker-compose.prod.yml up --build -d
 
 set -e
 cd "$(dirname "$0")/.."
-
-echo "Building and starting Orion IDE in production mode..."
-docker compose -f infrastructure/docker-compose.prod.yml build
-docker compose -f infrastructure/docker-compose.prod.yml up -d
-
-echo ""
-echo "Orion IDE is running at http://localhost"
-echo ""
-echo "View logs:   docker compose -f infrastructure/docker-compose.prod.yml logs -f"
-echo "Stop:        docker compose -f infrastructure/docker-compose.prod.yml down"
+exec bash scripts/up.sh -d "$@"

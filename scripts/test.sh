@@ -33,9 +33,30 @@ for svc in "${SERVICES[@]}"; do
   fi
 done
 
+echo ""
+echo "--- Frontend (Vitest) ---"
+if [ -d frontend ] && [ -f frontend/package.json ]; then
+  if (cd frontend && npm test -- --run 2>&1); then
+    PASS=$((PASS + 1))
+    echo "[PASS] frontend"
+  else
+    FAIL=$((FAIL + 1))
+    echo "[FAIL] frontend"
+  fi
+fi
+
+echo ""
 echo "========================================"
-echo "  Results: $PASS passed, $FAIL failed"
+echo "  Unit Results: $PASS passed, $FAIL failed"
 echo "========================================"
+echo ""
+echo "Live smokes (stack must be up, ORION_ACCESS_TOKEN optional for Drive):"
+echo "  node scripts/live-smoke-no-google.mjs"
+echo "  \$env:ORION_ACCESS_TOKEN=(node scripts/mint-access-token.mjs --print)"
+echo "  node scripts/e2e-full.mjs"
+echo "  node scripts/e2e-crud.mjs"
+echo "  node scripts/smoke-debug.mjs"
+echo "  node scripts/smoke-agent.mjs"
 
 if [ $FAIL -gt 0 ]; then
   exit 1

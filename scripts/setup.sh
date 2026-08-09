@@ -47,7 +47,7 @@ fi
 echo ""
 echo "Installing dependencies..."
 
-for dir in shared frontend services/api-gateway services/auth-service services/drive-service services/editor-service services/execution-service services/agent-service services/notification-service; do
+for dir in shared frontend services/api-gateway services/auth-service services/drive-service services/editor-service services/execution-service services/agent-service services/notification-service services/terminal-service; do
   if [ -f "$dir/package.json" ]; then
     echo "  Installing $dir..."
     (cd "$dir" && npm install --silent) || echo "  [WARN] Failed to install $dir"
@@ -112,7 +112,7 @@ done
 if [ "$PISTON_OK" = false ]; then
   echo ""
   echo "[INFO] Piston is not running yet. Start it first with:"
-  echo "  docker compose -f infrastructure/docker-compose.prod.yml up piston -d"
+  echo "  docker compose up piston -d"
   echo "  Then re-run: bash scripts/setup.sh"
 fi
 
@@ -123,5 +123,6 @@ echo "========================================"
 echo ""
 echo "Next steps:"
 echo "  1. Edit .env with your API keys"
-echo "  2. Run: bash scripts/dev.sh   (development)"
-echo "  3. Run: bash scripts/prod.sh  (production)"
+echo "  2. bash scripts/dev.sh     — hot-reload stack (frontend :3010)"
+echo "  3. bash scripts/prod.sh    — full stack HTTP (:80)"
+echo "  4. bash scripts/prod-ssl.sh — HTTPS (needs certs)"
