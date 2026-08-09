@@ -1,7 +1,35 @@
 /**
  * Live capability smoke (no Google token required).
  * Covers: Piston, execution-service, terminal PTY, auth/drive gates, gateway health.
+ *
+ * Direct service calls need X-Internal-Secret (mesh auth). Load from root .env.
  */
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = path.join(__dirname, '..');
+
+function loadEnv() {
+  const env = {};
+  const envPath = path.join(root, '.env');
+  if (!fs.existsSync(envPath)) return env;
+  for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (m) env[m[1]] = m[2];
+  }
+  return env;
+}
+
+const env = { ...loadEnv(), ...process.env };
+const SECRET = env.INTERNAL_SECRET || env.DRIVE_SERVICE_SECRET || '';
+const meshHeaders = {
+  'Content-Type': 'application/json',
+  'X-User-Id': 'live-test-user',
+  ...(SECRET ? { 'X-Internal-Secret': SECRET } : {}),
+};
+
 const results = [];
 const log = (n, ok, x) => {
   results.push({ n, ok });
@@ -9,6 +37,11 @@ const log = (n, ok, x) => {
 };
 
 async function main() {
+  if (!SECRET) {
+    console.error('INTERNAL_SECRET missing in .env — cannot call mesh-protected services');
+    process.exit(1);
+  }
+
   // 1) Piston
   try {
     const r = await fetch('http://localhost:2000/api/v2/runtimes');
@@ -35,11 +68,11 @@ async function main() {
     log('piston.execute.python', false, e.message);
   }
 
-  // 2) Execution service (direct, with user header)
+  // 2) Execution service (direct, with mesh secret)
   try {
     const r = await fetch('http://localhost:3004/execute', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': 'live-test-user' },
+      headers: meshHeaders,
       body: JSON.stringify({ languageId: 'python', fileName: 't.py', code: 'print("exec-ok")\n' }),
     });
     const j = await r.json();
@@ -49,7 +82,7 @@ async function main() {
       let done = null;
       for (let i = 0; i < 25; i++) {
         const rr = await fetch(`http://localhost:3004/execute/${id}/result`, {
-          headers: { 'X-User-Id': 'live-test-user' },
+          headers: meshHeaders,
         });
         const jj = await rr.json();
         if (jj?.data?.status === 'completed' || jj?.data?.status === 'failed') {
@@ -72,7 +105,7 @@ async function main() {
   try {
     const r = await fetch('http://localhost:3007/terminal/sessions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-User-Id': 'live-test-user' },
+      headers: meshHeaders,
       body: JSON.stringify({ cols: 80, rows: 24 }),
     });
     const j = await r.json();
@@ -115,7 +148,6 @@ async function main() {
         });
       });
 
-      // reject WS without token
       await new Promise((resolve) => {
         const ws = new WebSocket(`ws://localhost:3007/terminal/ws/terminal?terminalId=${tid}`);
         const timer = setTimeout(() => {
@@ -137,7 +169,7 @@ async function main() {
 
       const d = await fetch(`http://localhost:3007/terminal/sessions/${tid}`, {
         method: 'DELETE',
-        headers: { 'X-User-Id': 'live-test-user' },
+        headers: meshHeaders,
       });
       log('terminal.destroy', d.ok, `status=${d.status}`);
     }
@@ -155,7 +187,6 @@ async function main() {
 
   try {
     const r = await fetch('http://localhost:3002/drive/projects');
-    // 401 = missing user/token; 403 = missing service secret — both are fail-closed
     log('drive.noAuth.rejected', r.status === 401 || r.status === 403, `status=${r.status}`);
   } catch (e) {
     log('drive.noAuth', false, e.message);
