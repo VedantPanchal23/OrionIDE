@@ -12,12 +12,12 @@ const PLANS = Object.freeze({
     limits: {
       maxTerminals: 2,
       maxExecutionsPerMinute: 10,
-      maxAgentPipelinesPerDay: 0, // agents are Pro+
+      maxAgentPipelinesPerDay: 25,
       maxWorkspaceMb: 256,
-      agentsEnabled: false,
-      collabEnabled: false,
+      agentsEnabled: true,
+      collabEnabled: true,
       gitRemoteEnabled: true,
-      debuggerEnabled: false,
+      debuggerEnabled: true,
     },
   },
   pro: {
