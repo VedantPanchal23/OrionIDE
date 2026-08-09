@@ -26,7 +26,8 @@ const PUBLIC_ROUTES = [
   { method: 'POST', path: '/api/auth/exchange' },
   { method: 'POST', path: '/api/auth/refresh' },
   { method: 'POST', path: '/api/auth/logout' },
-  { method: 'GET', path: '/api/auth/validate' },
+  // /api/auth/validate is NOT public — browsers use /api/auth/profile.
+  // Gateway calls auth-service /auth/validate directly (with INTERNAL_SECRET).
   { method: 'GET', path: '/api/billing/plans' },
   { method: 'POST', path: '/api/billing/webhook' },
   { method: 'GET', path: '/health' },
@@ -68,7 +69,8 @@ const extractToken = (req) => {
     const isStreamPath =
       req.path.includes('/stream') ||
       req.path.startsWith('/api/notifications') ||
-      req.path.startsWith('/api/execute/');
+      req.path.startsWith('/api/execute/') ||
+      req.path.startsWith('/api/terminal/proxy');
     if (isStreamPath) return queryToken;
   }
 
@@ -106,8 +108,12 @@ const authMiddleware = async (req, res, next) => {
     // Brief retry — auth-service nodemon restarts / brief blips shouldn't 503 the whole API
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
+        const validateHeaders = { Authorization: `Bearer ${token}` };
+        if (SERVICE_SECRET) {
+          validateHeaders['X-Internal-Secret'] = SERVICE_SECRET;
+        }
         response = await axios.get(`${AUTH_SERVICE_URL}/auth/validate`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: validateHeaders,
           timeout: 5000,
         });
         lastErr = null;
