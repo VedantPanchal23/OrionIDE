@@ -1,0 +1,19 @@
+# Build context: repository root — editor needs debugpy for Python DAP
+FROM node:18-alpine
+ENV NODE_ENV=development
+ENV PORT=3003
+ENV ORION_PYTHON=python3
+WORKDIR /app
+
+RUN apk add --no-cache wget python3 py3-pip make g++ \
+  && pip3 install --no-cache-dir --break-system-packages debugpy \
+  && ln -sf /usr/bin/python3 /usr/bin/python
+
+COPY services/editor-service/package*.json ./
+RUN npm ci
+
+COPY services/editor-service/src ./src
+COPY shared /shared
+
+EXPOSE 3003
+CMD ["npx", "nodemon", "src/app.js"]

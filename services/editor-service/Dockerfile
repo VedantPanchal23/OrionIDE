@@ -1,23 +1,23 @@
-# -- Stage 1: Builder --
+# Build context: repository root
+# Includes python3 + debugpy for DAP (pythonAdapter.js)
 FROM node:18-alpine AS builder
 WORKDIR /build
-COPY package*.json ./
-RUN npm ci --only=production && cp -R node_modules /prod_modules
+COPY services/editor-service/package*.json ./
+RUN npm ci --omit=dev && cp -R node_modules /prod_modules
 
-# -- Stage 2: Runner --
 FROM node:18-alpine AS runner
 ENV NODE_ENV=production
+ENV PORT=3003
+ENV ORION_PYTHON=python3
 WORKDIR /app
-
-# Python + debugpy for DAP (Python adapter)
-RUN apk add --no-cache python3 py3-pip \
+RUN addgroup -S orion && adduser -S orion -G orion -h /home/orion \
+  && apk add --no-cache wget python3 py3-pip \
   && pip3 install --no-cache-dir --break-system-packages debugpy \
-  || pip3 install --no-cache-dir debugpy
-
-RUN addgroup -S orion && adduser -S orion -G orion -h /home/orion
+  && ln -sf /usr/bin/python3 /usr/bin/python
 COPY --from=builder /prod_modules ./node_modules
-COPY src/ ./src/
-RUN mkdir -p /workspace && chown -R orion:orion /workspace /app
+COPY services/editor-service/src ./src
+COPY shared /shared
+RUN chown -R orion:orion /app /shared
 USER orion
 EXPOSE 3003
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \

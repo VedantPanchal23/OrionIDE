@@ -1,17 +1,18 @@
-# -- Stage 1: Builder --
+# Build context: repository root
 FROM node:18-alpine AS builder
 WORKDIR /build
-COPY package*.json ./
-RUN npm ci --only=production && cp -R node_modules /prod_modules
+COPY services/notification-service/package*.json ./
+RUN npm ci --omit=dev && cp -R node_modules /prod_modules
 
-# -- Stage 2: Runner --
 FROM node:18-alpine AS runner
 ENV NODE_ENV=production
+ENV PORT=3006
 WORKDIR /app
-RUN addgroup -S orion && adduser -S orion -G orion -h /home/orion
+RUN addgroup -S orion && adduser -S orion -G orion -h /home/orion && apk add --no-cache wget
 COPY --from=builder /prod_modules ./node_modules
-COPY src/ ./src/
-RUN chown -R orion:orion /app
+COPY services/notification-service/src ./src
+COPY shared /shared
+RUN chown -R orion:orion /app /shared
 USER orion
 EXPOSE 3006
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
