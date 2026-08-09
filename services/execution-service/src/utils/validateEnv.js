@@ -4,6 +4,6 @@
 const { validateEnv } = require('../../../../shared/utils/validateEnv');
 
 module.exports = () => validateEnv('execution-service',
-  ['REDIS_URL'],
-  ['PISTON_API_URL'],
+  ['REDIS_URL', 'INTERNAL_SECRET', 'PISTON_API_URL'],
+  [],
 );

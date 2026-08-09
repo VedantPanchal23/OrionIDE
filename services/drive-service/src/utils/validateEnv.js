@@ -4,6 +4,6 @@
 const { validateEnv } = require('../../../../shared/utils/validateEnv');
 
 module.exports = () => validateEnv('drive-service',
-  ['REDIS_URL'],
+  ['REDIS_URL', 'INTERNAL_SECRET'],
   ['DRIVE_SERVICE_SECRET'],
 );

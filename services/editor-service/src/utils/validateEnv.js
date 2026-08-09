@@ -4,6 +4,6 @@
 const { validateEnv } = require('../../../../shared/utils/validateEnv');
 
 module.exports = () => validateEnv('editor-service',
-  ['REDIS_URL'],
+  ['REDIS_URL', 'JWT_SECRET'],
   [],
 );
