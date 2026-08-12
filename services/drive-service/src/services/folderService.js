@@ -96,27 +96,36 @@ const ensureOrionFolder = async (driveClient, userId) => {
  * @returns {Promise<Array>} Array of { id, name, mimeType, modifiedTime, size, parents }
  */
 const listFolder = async (driveClient, folderId) => {
-  const response = await driveApi(
-    () => driveClient.files.list({
-      q: `'${folderId}' in parents and trashed = false`,
-      fields: 'files(id, name, mimeType, modifiedTime, size, parents, md5Checksum)',
-      orderBy: 'folder,name',
-      pageSize: 1000,
-      spaces: 'drive',
-    }),
-    'folders.list'
-  );
+  const files = [];
+  let pageToken;
+  do {
+    const response = await driveApi(
+      () => driveClient.files.list({
+        q: `'${folderId}' in parents and trashed = false`,
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size, parents, md5Checksum)',
+        orderBy: 'folder,name',
+        pageSize: 1000,
+        spaces: 'drive',
+        pageToken,
+      }),
+      'folders.list'
+    );
+    for (const file of response.data.files || []) {
+      files.push({
+        id: file.id,
+        name: file.name,
+        mimeType: file.mimeType,
+        isFolder: file.mimeType === MIME_TYPES.FOLDER,
+        modifiedTime: file.modifiedTime,
+        size: file.size ? parseInt(file.size, 10) : null,
+        parents: file.parents || [],
+        md5Checksum: file.md5Checksum || null,
+      });
+    }
+    pageToken = response.data.nextPageToken || undefined;
+  } while (pageToken);
 
-  return (response.data.files || []).map((file) => ({
-    id: file.id,
-    name: file.name,
-    mimeType: file.mimeType,
-    isFolder: file.mimeType === MIME_TYPES.FOLDER,
-    modifiedTime: file.modifiedTime,
-    size: file.size ? parseInt(file.size, 10) : null,
-    parents: file.parents || [],
-    md5Checksum: file.md5Checksum || null,
-  }));
+  return files;
 };
 
 /**

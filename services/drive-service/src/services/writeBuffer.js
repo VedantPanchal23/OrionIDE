@@ -29,7 +29,7 @@ const RETRY_DELAY = 10 * 1000; // 10 seconds
 
 // Store google access tokens temporarily for flush operations
 const TOKEN_PREFIX = 'drive:token:';
-const TOKEN_TTL = 300; // 5 minutes
+const TOKEN_TTL = 900; // keep token longer than flush interval so buffered saves don't drop
 
 /**
  * Add file content to the write buffer.
@@ -100,23 +100,26 @@ const flushBuffer = async (userId) => {
         errors++;
         logger.error('Buffer flush failed', { userId, fileId, error: err.message });
 
-        // Retry once after delay
+        // Retry once after delay — never delete content on failure (silent data loss)
         setTimeout(async () => {
           try {
             const retryContent = await redis.get(key);
-            if (retryContent !== null) {
-              await updateFile(driveClient, fileId, retryContent);
-              await redis.del(key);
-              logger.info('Buffer flush retry succeeded', { userId, fileId });
-            }
+            if (retryContent === null) return;
+            await updateFile(driveClient, fileId, retryContent);
+            await redis.del(key);
+            logger.info('Buffer flush retry succeeded', { userId, fileId });
           } catch (retryErr) {
-            logger.error('Buffer flush retry failed — clearing buffer', {
+            logger.error('Buffer flush retry failed — keeping buffer for next cycle', {
               userId,
               fileId,
               error: retryErr.message,
             });
-            // Clear the buffer to prevent stale data
-            await redis.del(key).catch(() => {});
+            try {
+              const still = await redis.get(key);
+              if (still !== null) {
+                await redis.set(key, still, { EX: BUFFER_TTL * 2 });
+              }
+            } catch { /* next auto-flush cycle will try again until TTL */ }
           }
         }, RETRY_DELAY);
       }

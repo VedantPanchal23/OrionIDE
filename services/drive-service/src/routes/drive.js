@@ -21,6 +21,7 @@ const express = require('express');
 const { createDriveClient, MIME_TYPES } = require('../services/driveClient');
 const { ensureOrionFolder, listFolder, createFolder, deleteFolder, ensurePath } = require('../services/folderService');
 const { createFile, readFile, updateFile, deleteFile, renameFile, getMetadata } = require('../services/fileService');
+const { searchInProject } = require('../services/searchService');
 const { addToBuffer, flushImmediate } = require('../services/writeBuffer');
 const { createLogger } = require('../../../../shared/utils/logger');
 const { publishEvent } = require('../../../../shared/utils/notify');
@@ -36,21 +37,11 @@ const notifyDrive = (type, userId, payload) => {
 
 // ── Middleware: extract Google access token and user info ─────────────────
 // Tokens only from gateway headers — never from request body (spoofable).
-const extractUserContext = (req, res, next) => {
-  const serviceSecret = process.env.DRIVE_SERVICE_SECRET || process.env.INTERNAL_SECRET;
-  if (serviceSecret) {
-    const provided = req.headers['x-internal-secret'] || req.headers['x-orion-service-secret'];
-    if (provided !== serviceSecret) {
-      return res.status(403).json({
-        error: {
-          code: 'DRIVE_FORBIDDEN',
-          message: 'Missing or invalid service secret',
-          details: null,
-        },
-      });
-    }
-  }
+const { requireInternalSecret } = require('../../../../shared/utils/internalAuth');
 
+router.use(requireInternalSecret({ service: 'drive-service' }));
+
+const extractUserContext = (req, res, next) => {
   req.userId = req.headers['x-user-id'];
   req.userEmail = req.headers['x-user-email'];
   req.googleAccessToken = req.headers['x-google-access-token'];
@@ -209,9 +200,14 @@ router.get('/files/*', async (req, res) => {
   try {
     const fileId = extractFileId(req);
     const driveClient = getDriveFromReq(req);
-    const content = await readFile(driveClient, fileId);
+    const asBinary = req.query.asBinary === '1' || req.query.asBinary === 'true';
+    const content = await readFile(driveClient, fileId, { asBinary });
     const metadata = await getMetadata(driveClient, fileId);
-    success(res, { content, metadata });
+    if (asBinary && content && typeof content === 'object' && content.encoding === 'base64') {
+      success(res, { content: content.content, encoding: 'base64', size: content.size, metadata });
+    } else {
+      success(res, { content, metadata });
+    }
   } catch (err) {
     if (err.code === 404) {
       return error(res, 'DRIVE_FILE_NOT_FOUND', 'File not found', 404);
@@ -368,6 +364,24 @@ router.post('/ensure-path', async (req, res) => {
   } catch (err) {
     logger.error('ensure-path failed', { error: err.message });
     error(res, 'DRIVE_PATH_ERROR', 'Failed to ensure path', 500, err.message);
+  }
+});
+
+// GET /drive/search?q=&folderId=
+router.get('/search', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const folderId = req.query.folderId || req.headers['x-project-id'];
+    if (!q) return error(res, 'DRIVE_MISSING_PARAM', 'q is required', 400);
+    if (!folderId) return error(res, 'DRIVE_MISSING_PARAM', 'folderId is required', 400);
+    if (q.length > 200) return error(res, 'DRIVE_QUERY_TOO_LONG', 'q must be 200 characters or less', 400);
+
+    const driveClient = getDriveFromReq(req);
+    const data = await searchInProject(driveClient, folderId, q);
+    success(res, data);
+  } catch (err) {
+    logger.error('search failed', { error: err.message });
+    error(res, 'DRIVE_SEARCH_ERROR', 'Search failed', err.status || 500, err.message);
   }
 });
 
