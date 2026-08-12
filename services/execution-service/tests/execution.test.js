@@ -17,6 +17,7 @@ jest.mock('../src/services/redisClient', () => {
       return Promise.resolve(val);
     }),
     expire: jest.fn(() => Promise.resolve(1)),
+    ttl: jest.fn(() => Promise.resolve(60)),
     isOpen: true,
   };
   return {

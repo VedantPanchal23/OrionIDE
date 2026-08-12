@@ -41,7 +41,9 @@ const checkRateLimit = async (userId) => {
   const key = `${RATE_PREFIX}${userId}`;
 
   const current = await redis.incr(key);
-  if (current === 1) {
+  // Ensure TTL always exists (crash between incr/expire must not leave a permanent key)
+  const ttl = await redis.ttl(key);
+  if (ttl < 0) {
     await redis.expire(key, RATE_LIMIT_WINDOW);
   }
 
@@ -103,14 +105,15 @@ const createExecution = async (userId, language, fileName, code, stdin) => {
     try {
       const result = await execute(resolved.id, fileName, code, stdin);
 
-      // Push SSE events
+      // Push SSE events — JSON-encode stdout/stderr so newlines survive SSE framing
+      // (raw multi-line `data:` fields are truncated to the first line by EventSource).
       const events = activeStreams.get(executionId) || [];
 
       if (result.stdout) {
-        events.push({ event: 'stdout', data: result.stdout });
+        events.push({ event: 'stdout', data: JSON.stringify(result.stdout) });
       }
       if (result.stderr) {
-        events.push({ event: 'stderr', data: result.stderr });
+        events.push({ event: 'stderr', data: JSON.stringify(result.stderr) });
       }
       events.push({
         event: 'exit',
@@ -197,7 +200,9 @@ const streamResult = (res, executionId) => {
 
   const sendEvent = (event, data) => {
     if (closed) return;
-    res.write(`event: ${event}\ndata: ${data}\n\n`);
+    // SSE: every payload line must start with "data: "
+    const lines = String(data ?? '').split(/\r?\n/);
+    res.write(`event: ${event}\n${lines.map((l) => `data: ${l}`).join('\n')}\n\n`);
   };
 
   // Poll for new events
