@@ -14,6 +14,7 @@ const { mountNotificationRoutes } = require('./notifications');
 const { mountTerminalRoutes } = require('./terminal');
 const { mountGitRoutes } = require('./git');
 const { mountBillingRoutes } = require('./billing');
+const { mountLspRoutes } = require('./lsp');
 
 /**
  * Mount all downstream service routes on the app.
@@ -30,6 +31,7 @@ const mountAllRoutes = (app) => {
   mountNotificationRoutes(app);   // /api/notifications/*  → notification-service:3006
   mountTerminalRoutes(app);       // /api/terminal/*       → terminal-service:3007
   mountGitRoutes(app);            // /api/git/*            → terminal-service:3007/git
+  mountLspRoutes(app);            // /api/lsp/*            → lsp-service:3008
 };
 
 module.exports = { mountAllRoutes };

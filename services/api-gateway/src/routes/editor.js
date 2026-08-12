@@ -60,11 +60,12 @@ const mountEditorRoutes = (app) => {
         return res.status(503).json({
           error: {
             code: 'DEBUGGER_DISABLED',
-            message: 'Debugger API is disabled until sync/auth are production-ready (set ENABLE_DEBUGGER_API=true)',
+            message: 'Debugger API is disabled (set ENABLE_DEBUGGER_API=true)',
             details: null,
           },
         });
       }
+      if (flags().debuggerOnFree) return next();
       return requireFeature('debugger')(req, res, next);
     }
     return next();

@@ -47,6 +47,7 @@ const SERVICE_URLS = {
   agents:        process.env.AGENT_SERVICE_URL || 'http://localhost:3005',
   notifications: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3006',
   terminal:      process.env.TERMINAL_SERVICE_URL || 'http://localhost:3007',
+  lsp:           process.env.LSP_SERVICE_URL || 'http://localhost:3008',
 };
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -164,6 +165,7 @@ if (process.env.NODE_ENV !== 'test') {
 
   // Handle WebSocket upgrades — forward to the correct service proxy
   const { upgradeTerminalWebSocket } = require('./routes/terminal');
+  const { upgradeLspWebSocket } = require('./routes/lsp');
   const { editorProxy } = require('./routes/editor');
 
   server.on('upgrade', (req, socket, head) => {
@@ -180,7 +182,20 @@ if (process.env.NODE_ENV !== 'test') {
       const upgradeUrl = new URL(req.url, 'http://localhost');
 
       if (upgradeUrl.pathname.startsWith('/api/terminal')) {
-        upgradeTerminalWebSocket(req, socket, head, upgradeUrl);
+        Promise.resolve(upgradeTerminalWebSocket(req, socket, head, upgradeUrl)).catch((err) => {
+          logger.error('Terminal WebSocket upgrade failed', { error: err.message });
+          if (socket && !socket.destroyed) {
+            try {
+              socket.write('HTTP/1.1 500 Internal Server Error\r\nConnection: close\r\n\r\n');
+            } catch { /* ignore */ }
+            try { socket.destroy(); } catch { /* ignore */ }
+          }
+        });
+        return;
+      }
+
+      if (upgradeUrl.pathname.startsWith('/api/lsp')) {
+        upgradeLspWebSocket(req, socket, head, upgradeUrl);
         return;
       }
 

@@ -31,6 +31,11 @@ const agentsProxy = createProxyMiddleware({
           proxyReq.setHeader('X-Google-Access-Token', req.user.googleAccessToken);
         }
       }
+      const secret = process.env.INTERNAL_SECRET || process.env.DRIVE_SERVICE_SECRET;
+      if (secret) {
+        proxyReq.setHeader('X-Internal-Secret', secret);
+        proxyReq.setHeader('X-Orion-Service-Secret', secret);
+      }
     },
     proxyRes: (proxyRes, req, res) => {
       // SSE streaming support for agent pipeline output
@@ -72,10 +77,16 @@ const mountAgentRoutes = (app) => {
     }
     return next();
   }, (req, res, next) => {
-    // Pro-tier feature gate for all agent routes
+    // Same UI for all users: skip Pro gate when agentsOnFree or free plan already enables agents
+    if (flags().agentsOnFree) return next();
     return requireFeature('agents')(req, res, next);
   }, (req, res, next) => {
-    if (req.method === 'POST' && req.path === '/pipeline/start') {
+    if (req.method === 'POST' && (
+      req.path === '/pipeline/start'
+      || req.path === '/chat'
+      || req.path === '/inline-edit'
+      || req.path === '/commit-message'
+    )) {
       return requireAgentQuota(req, res, next);
     }
     return next();

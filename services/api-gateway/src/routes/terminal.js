@@ -7,8 +7,11 @@
 
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const httpProxy = require('http-proxy');
+const axios = require('axios');
 
 const TERMINAL_SERVICE_URL = process.env.TERMINAL_SERVICE_URL || 'http://localhost:3007';
+const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+const SERVICE_SECRET = process.env.INTERNAL_SECRET || process.env.DRIVE_SERVICE_SECRET || '';
 
 const terminalProxy = createProxyMiddleware({
   target: TERMINAL_SERVICE_URL,
@@ -71,13 +74,64 @@ terminalWsProxy.on('error', (err, _req, socket) => {
 });
 
 /**
- * Forward a browser upgrade to terminal-service /terminal/ws/terminal
- * @param {import('http').IncomingMessage} req
- * @param {import('stream').Duplex} socket
- * @param {Buffer} head
- * @param {URL} upgradeUrl
+ * Forward browser upgrades to terminal-service:
+ * - PTY: /api/terminal/ws?... → /terminal/ws/terminal
+ * - Port proxy (Vite HMR): /api/terminal/proxy/:port/... → /terminal/proxy/:port/...
  */
-function upgradeTerminalWebSocket(req, socket, head, upgradeUrl) {
+async function upgradeTerminalWebSocket(req, socket, head, upgradeUrl) {
+  const pathname = upgradeUrl.pathname || '';
+  const proxyMatch = pathname.match(/^\/api\/terminal\/proxy\/(\d+)(\/.*)?$/);
+
+  if (proxyMatch) {
+    const token =
+      upgradeUrl.searchParams.get('token')
+      || (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+      || '';
+    if (!token) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    try {
+      const headers = { Authorization: `Bearer ${token}` };
+      if (SERVICE_SECRET) {
+        headers['X-Internal-Secret'] = SERVICE_SECRET;
+        headers['X-Orion-Service-Secret'] = SERVICE_SECRET;
+      }
+      const validated = await axios.get(`${AUTH_SERVICE_URL}/auth/validate`, {
+        headers,
+        timeout: 5000,
+      });
+      const user = validated.data?.data?.user || validated.data?.user || validated.data?.data || {};
+      const userId = user.id || user.userId || validated.data?.data?.userId;
+      if (!userId) throw new Error('No userId from validate');
+      req.headers['x-user-id'] = String(userId);
+      if (user.email) req.headers['x-user-email'] = String(user.email);
+      if (SERVICE_SECRET) {
+        req.headers['x-internal-secret'] = SERVICE_SECRET;
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[api-gateway] port proxy WS auth failed:', err.message);
+      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    req.url = pathname.replace(/^\/api/, '') + (upgradeUrl.search || '');
+    try {
+      terminalWsProxy.ws(req, socket, head);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[api-gateway] terminal proxy WS upgrade threw:', err.message);
+      if (socket && !socket.destroyed) {
+        try { socket.destroy(); } catch { /* ignore */ }
+      }
+    }
+    return;
+  }
+
   const terminalId = upgradeUrl.searchParams.get('terminalId');
   const connectToken =
     upgradeUrl.searchParams.get('connectToken') || upgradeUrl.searchParams.get('token');
@@ -89,10 +143,19 @@ function upgradeTerminalWebSocket(req, socket, head, upgradeUrl) {
 
   const params = new URLSearchParams({
     terminalId,
+    connectToken,
     token: connectToken,
   });
   req.url = `/terminal/ws/terminal?${params.toString()}`;
-  terminalWsProxy.ws(req, socket, head);
+  try {
+    terminalWsProxy.ws(req, socket, head);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[api-gateway] terminal WS upgrade threw:', err.message);
+    if (socket && !socket.destroyed) {
+      try { socket.destroy(); } catch { /* ignore */ }
+    }
+  }
 }
 
 const mountTerminalRoutes = (app) => {

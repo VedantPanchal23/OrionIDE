@@ -29,6 +29,11 @@ const executeProxy = createProxyMiddleware({
         proxyReq.setHeader('X-User-Id', req.user.id || req.user.userId || '');
         proxyReq.setHeader('X-User-Email', req.user.email || '');
       }
+      const secret = process.env.INTERNAL_SECRET || process.env.DRIVE_SERVICE_SECRET;
+      if (secret) {
+        proxyReq.setHeader('X-Internal-Secret', secret);
+        proxyReq.setHeader('X-Orion-Service-Secret', secret);
+      }
     },
     proxyRes: (proxyRes, req, res) => {
       // If this is an SSE stream response, set appropriate headers
