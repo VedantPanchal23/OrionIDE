@@ -1,0 +1,51 @@
+# Orion LSP service — Node + language servers (dev)
+FROM node:20-bookworm-slim
+
+ENV NODE_ENV=development
+ENV PORT=3008
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-pip python3-venv \
+    clangd \
+    curl ca-certificates \
+    golang-go \
+    build-essential \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV GOPATH=/root/go \
+    RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:/root/go/bin:${PATH}
+
+# JS/TS + web + Pyright
+RUN npm install -g \
+    typescript \
+    typescript-language-server \
+    vscode-langservers-extracted \
+    yaml-language-server \
+    pyright
+
+# Gopls — pin to a version compatible with Debian golang-go (avoids go 1.26 go.mod)
+RUN set -eux; \
+    go install golang.org/x/tools/gopls@v0.15.3; \
+    gopls version
+
+# Rust + rust-analyzer
+RUN set -eux; \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh; \
+    sh /tmp/rustup-init.sh -y --no-modify-path --default-toolchain stable --profile minimal; \
+    rm /tmp/rustup-init.sh; \
+    rustup component add rust-analyzer; \
+    ln -sf "$(rustup which rust-analyzer)" /usr/local/bin/rust-analyzer; \
+    rustc --version; \
+    rust-analyzer --version
+
+COPY services/lsp-service/package*.json ./
+RUN npm ci
+
+COPY services/lsp-service/src ./src
+COPY shared /shared
+
+EXPOSE 3008
+CMD ["npx", "nodemon", "src/app.js"]
