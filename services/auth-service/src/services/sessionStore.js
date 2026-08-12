@@ -86,11 +86,17 @@ const exchangeAuthCode = async (redis, code) => {
   }
 
   const key = authCodeKey(hashCode(code));
-  // Atomic get-and-delete when available (redis v4+)
   let raw;
   if (typeof redis.getDel === 'function') {
     raw = await redis.getDel(key);
+  } else if (typeof redis.eval === 'function') {
+    // Atomic get-and-delete via Lua when getDel is unavailable
+    raw = await redis.eval(
+      "local v = redis.call('GET', KEYS[1]); if v then redis.call('DEL', KEYS[1]) end; return v",
+      { keys: [key] }
+    );
   } else {
+    // Last resort — small race window; prefer Redis builds with getDel/eval
     raw = await redis.get(key);
     if (raw) await redis.del(key);
   }

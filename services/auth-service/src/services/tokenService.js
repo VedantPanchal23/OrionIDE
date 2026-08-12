@@ -30,8 +30,26 @@ const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret
 const JWT_ACCESS_EXPIRY = process.env.JWT_ACCESS_EXPIRY || '15m';
 const JWT_REFRESH_EXPIRY = process.env.JWT_REFRESH_EXPIRY || '7d';
 
-// Convert expiry string to seconds for Redis TTL
-const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days in seconds
+/**
+ * Convert jwt expiresIn-style strings (e.g. 15m, 7d) to seconds.
+ * @param {string|number} exp
+ * @param {number} [fallback]
+ * @returns {number}
+ */
+const expiryToSeconds = (exp, fallback = 7 * 24 * 60 * 60) => {
+  if (typeof exp === 'number' && Number.isFinite(exp) && exp > 0) return Math.floor(exp);
+  const m = String(exp || '').trim().match(/^(\d+)\s*([smhd])$/i);
+  if (!m) return fallback;
+  const n = parseInt(m[1], 10);
+  const unit = m[2].toLowerCase();
+  if (unit === 's') return n;
+  if (unit === 'm') return n * 60;
+  if (unit === 'h') return n * 3600;
+  return n * 86400; // days
+};
+
+/** Redis TTL for refresh tokens — must track JWT_REFRESH_EXPIRY */
+const REFRESH_TTL_SECONDS = expiryToSeconds(JWT_REFRESH_EXPIRY);
 
 /**
  * Hash a token for safe Redis storage (don't store raw tokens).
@@ -156,14 +174,23 @@ const storeRefreshToken = async (redisClient, userId, token) => {
   const tokenHash = hashToken(token);
   const key = `auth:refresh:${userId}:${tokenHash}`;
 
+  // Prefer remaining JWT lifetime so Redis never outlives (or underlives) the token
+  let ttl = REFRESH_TTL_SECONDS;
+  try {
+    const decoded = jwt.decode(token);
+    if (decoded?.exp) {
+      ttl = Math.max(1, decoded.exp - Math.floor(Date.now() / 1000));
+    }
+  } catch { /* use configured default */ }
+
   await redisClient.set(key, JSON.stringify({
     userId,
     createdAt: new Date().toISOString(),
   }), {
-    EX: REFRESH_TTL_SECONDS,
+    EX: ttl,
   });
 
-  logger.debug('Refresh token stored', { userId, key });
+  logger.debug('Refresh token stored', { userId, key, ttl });
 };
 
 /**
@@ -259,5 +286,12 @@ module.exports = {
   hashToken,
   buildPayload,
   // Exported for testing
-  _config: { JWT_SECRET, JWT_REFRESH_SECRET, JWT_ACCESS_EXPIRY, JWT_REFRESH_EXPIRY },
+  _config: {
+    JWT_SECRET,
+    JWT_REFRESH_SECRET,
+    JWT_ACCESS_EXPIRY,
+    JWT_REFRESH_EXPIRY,
+    REFRESH_TTL_SECONDS,
+    expiryToSeconds,
+  },
 };

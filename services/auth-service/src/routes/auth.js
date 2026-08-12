@@ -493,7 +493,8 @@ router.patch('/profile', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────
 // GET /auth/validate — Validate token (used by API Gateway)
 //
-// Returns identity + Google access token from Redis for Drive forwarding.
+// Identity is always returned. Google access token is ONLY included when the
+// caller presents INTERNAL_SECRET (gateway → auth). Browsers must use /profile.
 // ─────────────────────────────────────────────────────────────────────────
 router.get('/validate', async (req, res) => {
   try {
@@ -512,7 +513,17 @@ router.get('/validate', async (req, res) => {
     const decoded = verifyAccessToken(token);
     const redis = await getRedisClient();
 
-    if (await isAccessJtiDenied(redis, decoded.jti)) {
+    let denied = false;
+    try {
+      denied = await isAccessJtiDenied(redis, decoded.jti);
+    } catch (redisErr) {
+      // Denylist is best-effort — Redis outages must not reject valid JWTs as "invalid"
+      logger.warn('Access denylist check failed — continuing', {
+        userId: decoded.userId,
+        error: redisErr.message,
+      });
+    }
+    if (denied) {
       return res.status(401).json({
         error: {
           code: 'AUTH_TOKEN_REVOKED',
@@ -522,14 +533,19 @@ router.get('/validate', async (req, res) => {
       });
     }
 
+    const { isInternalCaller } = require('../../../../shared/utils/internalAuth');
+    const internal = isInternalCaller(req);
+
     let googleAccessToken = null;
-    try {
-      googleAccessToken = await resolveGoogleAccessToken(redis, decoded.userId);
-    } catch (redisErr) {
-      logger.warn('Could not resolve Google access token during validate', {
-        userId: decoded.userId,
-        error: redisErr.message,
-      });
+    if (internal) {
+      try {
+        googleAccessToken = await resolveGoogleAccessToken(redis, decoded.userId);
+      } catch (redisErr) {
+        logger.warn('Could not resolve Google access token during validate', {
+          userId: decoded.userId,
+          error: redisErr.message,
+        });
+      }
     }
 
     let planId = null;
@@ -542,18 +558,20 @@ router.get('/validate', async (req, res) => {
       // optional
     }
 
-    return res.json({
-      data: {
-        id: decoded.userId,
-        userId: decoded.userId,
-        email: decoded.email,
-        name: decoded.name,
-        picture: decoded.picture,
-        googleAccessToken,
-        planId,
-        entitlements,
-      },
-    });
+    const payload = {
+      id: decoded.userId,
+      userId: decoded.userId,
+      email: decoded.email,
+      name: decoded.name,
+      picture: decoded.picture,
+      planId,
+      entitlements,
+    };
+    if (internal) {
+      payload.googleAccessToken = googleAccessToken;
+    }
+
+    return res.json({ data: payload });
   } catch (err) {
     return res.status(401).json({
       error: {
@@ -561,6 +579,46 @@ router.get('/validate', async (req, res) => {
         message: err.message || 'Invalid or expired token',
         details: null,
       },
+    });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// GET /auth/internal/google-token — mesh-only fresh Google access token
+// Used by terminal-service auto-push / agent when the cached token may be stale.
+// ─────────────────────────────────────────────────────────────────────────
+router.get('/internal/google-token', async (req, res) => {
+  const { isInternalCaller } = require('../../../../shared/utils/internalAuth');
+  if (!isInternalCaller(req)) {
+    return res.status(403).json({
+      error: { code: 'FORBIDDEN_INTERNAL', message: 'Internal secret required', details: null },
+    });
+  }
+
+  const userId = req.headers['x-user-id'] || req.query.userId;
+  if (!userId) {
+    return res.status(400).json({
+      error: { code: 'AUTH_MISSING_USER', message: 'X-User-Id required', details: null },
+    });
+  }
+
+  try {
+    const redis = await getRedisClient();
+    const googleAccessToken = await resolveGoogleAccessToken(redis, userId);
+    if (!googleAccessToken) {
+      return res.status(404).json({
+        error: {
+          code: 'GOOGLE_TOKEN_UNAVAILABLE',
+          message: 'No Google access token — user must re-login',
+          details: null,
+        },
+      });
+    }
+    return res.json({ data: { userId, googleAccessToken } });
+  } catch (err) {
+    logger.error('internal google-token failed', { userId, error: err.message });
+    return res.status(503).json({
+      error: { code: 'SERVICE_UNAVAILABLE', message: 'Could not resolve Google token', details: null },
     });
   }
 });
