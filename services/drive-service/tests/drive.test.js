@@ -253,12 +253,32 @@ describe('File Service', () => {
   });
 
   test('readFile returns content as string', async () => {
-    mockDrive.files.get.mockResolvedValueOnce({
-      data: 'console.log("hello world")',
-    });
+    mockDrive.files.get
+      .mockResolvedValueOnce({
+        data: { mimeType: 'text/plain', name: 'app.js' },
+      })
+      .mockResolvedValueOnce({
+        data: 'console.log("hello world")',
+      });
 
     const content = await readFile(mockDrive, 'file-1');
     expect(content).toBe('console.log("hello world")');
+  });
+
+  test('readFile asBinary returns base64 payload', async () => {
+    const bytes = Buffer.from([0x00, 0x01, 0xff]);
+    mockDrive.files.get
+      .mockResolvedValueOnce({
+        data: { mimeType: 'application/octet-stream', name: 'bin.dat' },
+      })
+      .mockResolvedValueOnce({
+        data: bytes,
+      });
+
+    const result = await readFile(mockDrive, 'file-bin', { asBinary: true });
+    expect(result.encoding).toBe('base64');
+    expect(result.content).toBe(bytes.toString('base64'));
+    expect(result.size).toBe(3);
   });
 
   test('updateFile updates file content', async () => {
