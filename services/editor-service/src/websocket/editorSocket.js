@@ -14,7 +14,11 @@ const { bindYjsSocket } = require('./yjsRooms');
 const { flags } = require('../../../../shared/utils/featureFlags');
 
 const logger = createLogger('editor-service');
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-jwt-secret-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET && process.env.NODE_ENV !== 'test') {
+  throw new Error('JWT_SECRET is required for editor-service WebSocket auth');
+}
+const RESOLVED_JWT_SECRET = JWT_SECRET || 'test-only-jwt-secret';
 
 /** @type {Map<string, Set<import('ws').WebSocket>>} */
 const rooms = new Map();
@@ -37,7 +41,7 @@ const extractToken = (req, url) => {
 
 const verifyToken = (token) => {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, RESOLVED_JWT_SECRET);
     if (decoded.type && decoded.type !== 'access') return null;
     if (!decoded.userId && !decoded.id && !decoded.sub) return null;
     return decoded;
@@ -148,11 +152,7 @@ const setupWebSocket = (server) => {
           return;
         }
         bindYjsSocket(ws, String(req.editorRoomHint));
-        ws.send(JSON.stringify({
-          type: 'yjs-bound',
-          roomId: String(req.editorRoomHint),
-          timestamp: Date.now(),
-        }));
+        // Do not send JSON after bind — clients speak binary y-protocols only
       } else {
         joinRoom(ws, String(req.editorRoomHint));
       }
@@ -189,7 +189,6 @@ const setupWebSocket = (server) => {
           }
           leaveRoom(ws);
           bindYjsSocket(ws, String(roomId));
-          ws.send(JSON.stringify({ type: 'yjs-bound', roomId: String(roomId), timestamp: Date.now() }));
           break;
         }
         case 'join': {
@@ -241,11 +240,21 @@ const setupWebSocket = (server) => {
       }).catch(() => {});
     });
 
-    ws.send(JSON.stringify({ type: 'connected', userId, timestamp: Date.now() }));
+    // Never send JSON on Yjs sockets — clients speak binary y-protocols only
+    if (!ws.isYjs) {
+      ws.send(JSON.stringify({ type: 'connected', userId, timestamp: Date.now() }));
+    }
   });
 
   const heartbeat = setInterval(() => {
     wss.clients.forEach((client) => {
+      if (client.isYjs) {
+        // Binary protocol: rely on WS-level ping only, keep isAlive true
+        if (!client.isAlive) return client.terminate();
+        client.isAlive = false;
+        try { client.ping(); } catch { /* ignore */ }
+        return;
+      }
       if (!client.isAlive) return client.terminate();
       client.isAlive = false;
       client.ping();
