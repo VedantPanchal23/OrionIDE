@@ -118,11 +118,10 @@ describe('Notification Routes', () => {
     expect(res.body.error.code).toBe('NOTIF_NO_AUTH');
   });
 
-  test('GET /notifications/health returns stats', async () => {
+  test('GET /notifications/health returns ok', async () => {
     const res = await request(app).get('/notifications/health').expect(200);
     expect(res.body.status).toBe('ok');
-    expect(res.body.users).toBeDefined();
-    expect(res.body.connections).toBeDefined();
+    expect(res.body.service).toBe('notification-service');
   });
 
   test('GET /health returns ok', async () => {
