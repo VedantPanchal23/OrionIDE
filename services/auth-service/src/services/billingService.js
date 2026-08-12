@@ -107,7 +107,9 @@ const assertCanExecute = async (userId) => {
 
 const assertCanStartAgent = async (userId) => {
   const ent = await getEntitlements(userId);
-  if (!ent.limits.agentsEnabled) {
+  const { flags } = require('../../../../shared/utils/featureFlags');
+  const agentsOk = ent.limits.agentsEnabled || flags().agentsOnFree;
+  if (!agentsOk) {
     return {
       allowed: false,
       count: 0,
@@ -116,17 +118,28 @@ const assertCanStartAgent = async (userId) => {
       entitlements: ent,
     };
   }
+  const limit = Math.max(
+    ent.limits.maxAgentPipelinesPerDay || 0,
+    flags().agentsOnFree ? 25 : 0,
+  );
   return checkAndIncrement(
     userId,
     'agent_pipelines',
-    ent.limits.maxAgentPipelinesPerDay,
+    limit,
     dayKey()
   );
 };
 
 const assertFeature = async (userId, featureKey) => {
   const ent = await getEntitlements(userId);
-  const enabled = Boolean(ent.features[featureKey]);
+  const { flags } = require('../../../../shared/utils/featureFlags');
+  let enabled = Boolean(ent.features[featureKey]);
+  if (!enabled && featureKey === 'agents' && flags().agentsOnFree) {
+    enabled = true;
+  }
+  if (!enabled && featureKey === 'debugger' && flags().debuggerOnFree) {
+    enabled = true;
+  }
   return { allowed: enabled, entitlements: ent };
 };
 
@@ -167,10 +180,20 @@ const createCheckoutSession = async (userId, planId) => {
 
   const stripeKey = process.env.STRIPE_SECRET_KEY;
   if (!stripeKey) {
-    throw Object.assign(
-      new Error('Billing checkout is not available — Stripe is not configured'),
-      { code: 'BILLING_STRIPE_DISABLED', status: 402 },
-    );
+    // Dev / OSS: upgrade immediately so Upgrade CTA works without Stripe keys
+    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEV_BILLING !== 'true') {
+      throw Object.assign(
+        new Error('Billing checkout is not available — Stripe is not configured'),
+        { code: 'BILLING_STRIPE_DISABLED', status: 402 },
+      );
+    }
+    await changePlan(userId, planId);
+    return {
+      mode: 'dev',
+      upgraded: true,
+      planId,
+      checkoutUrl: `${process.env.FRONTEND_URL || 'http://localhost:3010'}/billing?success=1&plan=${encodeURIComponent(planId)}`,
+    };
   }
 
   // Lazy require so Stripe is optional
