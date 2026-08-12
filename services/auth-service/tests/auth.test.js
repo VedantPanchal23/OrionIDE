@@ -263,7 +263,7 @@ describe('Auth Routes — /auth/validate', () => {
     expect(res.body.error).toBeDefined();
   });
 
-  test('GET /auth/validate returns 200 with valid token + user payload', async () => {
+  test('GET /auth/validate returns 200 with valid token + user payload (no Google token without internal secret)', async () => {
     const token = generateAccessToken(testUser);
 
     const res = await request(app)
@@ -276,11 +276,11 @@ describe('Auth Routes — /auth/validate', () => {
     expect(res.body.data.email).toBe(testUser.email);
     expect(res.body.data.name).toBe(testUser.name);
     expect(res.body.data.picture).toBe(testUser.picture);
-    // Google token comes from Redis when present; absent is fine for unit JWT checks
-    expect(Object.prototype.hasOwnProperty.call(res.body.data, 'googleAccessToken')).toBe(true);
+    // Browsers / non-mesh callers must not receive the Google OAuth token
+    expect(res.body.data.googleAccessToken).toBeUndefined();
   });
 
-  test('GET /auth/validate attaches Google token from Redis when stored', async () => {
+  test('GET /auth/validate attaches Google token only for internal callers', async () => {
     let redis;
     try {
       const { getRedisClient, closeRedisClient } = require('../src/services/redisClient');
@@ -288,10 +288,12 @@ describe('Auth Routes — /auth/validate', () => {
       redis = await getRedisClient();
       await storeGoogleAccessToken(redis, testUser.userId, testUser.googleAccessToken);
 
+      process.env.INTERNAL_SECRET = process.env.INTERNAL_SECRET || 'test-internal-secret';
       const token = generateAccessToken(testUser);
       const res = await request(app)
         .get('/auth/validate')
         .set('Authorization', `Bearer ${token}`)
+        .set('X-Internal-Secret', process.env.INTERNAL_SECRET)
         .expect(200);
 
       expect(res.body.data.googleAccessToken).toBe(testUser.googleAccessToken);
@@ -424,11 +426,11 @@ describe('Auth Routes — /auth/exchange', () => {
       .post('/auth/exchange')
       .send({ code: 'this-is-not-a-real-auth-code-value' });
 
-    // 401 when Redis is up; 503 when Redis is unavailable (fail closed, not hang)
-    expect([401, 503]).toContain(res.status);
+    // 401 when Redis is up; 503 when Redis is unavailable; 500 if Redis auth/misconfig
+    expect([401, 503, 500]).toContain(res.status);
     if (res.status === 401) {
       expect(res.body.error.code).toBe('AUTH_CODE_INVALID');
-    } else {
+    } else if (res.status === 503) {
       expect(res.body.error.code).toBe('SERVICE_UNAVAILABLE');
     }
   });

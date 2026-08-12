@@ -9,11 +9,12 @@ describe('plans catalog', () => {
     expect(getPlan('nope').id).toBe('free');
   });
 
-  test('pro unlocks debugger + collab + agents', () => {
+  test('pro unlocks collab; free keeps agents + debugger (OSS same-UI)', () => {
     expect(PLANS.pro.limits.debuggerEnabled).toBe(true);
     expect(PLANS.pro.limits.collabEnabled).toBe(true);
     expect(PLANS.pro.limits.agentsEnabled).toBe(true);
-    expect(PLANS.free.limits.debuggerEnabled).toBe(false);
-    expect(PLANS.free.limits.agentsEnabled).toBe(false);
+    expect(PLANS.free.limits.debuggerEnabled).toBe(true);
+    expect(PLANS.free.limits.agentsEnabled).toBe(true);
+    expect(PLANS.free.limits.collabEnabled).toBe(false);
   });
 });
