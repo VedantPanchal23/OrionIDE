@@ -25,9 +25,14 @@ describe('gitService.parseStatus', () => {
     expect(result.untracked).toEqual([{ path: 'new.js', status: 'untracked' }]);
   });
 
-  test('handles rename paths', () => {
-    const result = parseStatus('R  old.js -> new.js\n');
-    expect(result.staged[0].path).toBe('new.js');
-    expect(result.staged[0].status).toBe('renamed');
+  test('skips unmerged paths from staged/unstaged', () => {
+    const result = parseStatus([
+      'UU conflict.js',
+      'M  ok.js',
+      '?? new.js',
+    ].join('\n'));
+    expect(result.staged.map((f) => f.path)).toEqual(['ok.js']);
+    expect(result.unstaged.map((f) => f.path)).toEqual([]);
+    expect(result.untracked).toEqual([{ path: 'new.js', status: 'untracked' }]);
   });
 });
