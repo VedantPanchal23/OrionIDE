@@ -85,6 +85,12 @@ function parseStatus(porcelain) {
       continue;
     }
 
+    // Unmerged (UU/AU/UA/DU/UD/AA/DD) — handled separately via `unmerged`
+    const isUnmerged = (x === 'U' || y === 'U')
+      || (x === 'A' && y === 'A')
+      || (x === 'D' && y === 'D');
+    if (isUnmerged) continue;
+
     if (x !== ' ' && x !== '?') {
       staged.push({ path: filePath, status: statusLetter(x) });
     }
@@ -119,6 +125,18 @@ async function getStatus(userId, projectId) {
   const { stdout } = await git(cwd, ['status', '--porcelain=v1']);
   const lists = parseStatus(stdout);
 
+  const unmerged = [];
+  for (const line of stdout.split('\n')) {
+    if (!line || line.length < 3) continue;
+    const x = line[0];
+    const y = line[1];
+    const isUnmerged = (x === 'U' || y === 'U') || (x === 'A' && y === 'A') || (x === 'D' && y === 'D');
+    if (!isUnmerged) continue;
+    let filePath = line.slice(3);
+    if (filePath.includes(' -> ')) filePath = filePath.split(' -> ').pop();
+    unmerged.push({ path: filePath.replace(/\\/g, '/'), status: `${x}${y}` });
+  }
+
   let branch = 'main';
   try {
     const { stdout: b } = await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']);
@@ -127,7 +145,7 @@ async function getStatus(userId, projectId) {
     // empty repo / detached
   }
 
-  return { ...lists, branch, projectId, cwd };
+  return { ...lists, unmerged, branch, projectId, cwd };
 }
 
 /**
@@ -351,6 +369,224 @@ async function checkoutBranch(userId, projectId, { branch, create = false }) {
   return getStatus(userId, projectId);
 }
 
+/**
+ * HEAD vs working-tree contents for a single file (for Monaco DiffEditor).
+ */
+async function getFileDiff(userId, projectId, filePath) {
+  if (!filePath || typeof filePath !== 'string') {
+    const err = new Error('path is required');
+    err.code = 'GIT_MISSING_PATH';
+    err.status = 400;
+    throw err;
+  }
+  const cwd = projectRoot(userId, projectId);
+  await ensureRepo(cwd);
+
+  const rel = path.normalize(filePath).replace(/^([/\\])+/, '').replace(/\\/g, '/');
+  if (!rel || rel.includes('..')) {
+    const err = new Error('Invalid path');
+    err.code = 'GIT_BAD_PATH';
+    err.status = 400;
+    throw err;
+  }
+
+  let original = '';
+  try {
+    const { stdout } = await git(cwd, ['show', `HEAD:${rel}`]);
+    original = stdout;
+  } catch {
+    original = '';
+  }
+
+  const abs = path.join(cwd, ...rel.split('/'));
+  let modified = '';
+  if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
+    modified = fs.readFileSync(abs, 'utf8');
+  }
+
+  return { path: rel, original, modified };
+}
+
+/**
+ * Parse conflict markers and resolve by choice.
+ * @param {'ours'|'theirs'|'both'} choice
+ */
+function resolveConflictText(content, choice) {
+  const text = String(content ?? '');
+  if (!text.includes('<<<<<<<')) return { text, changed: false };
+
+  const re = /<<<<<<<[^\n]*\n([\s\S]*?)=======\n([\s\S]*?)>>>>>>>[^\n]*\n?/g;
+  let changed = false;
+  const resolved = text.replace(re, (_, ours, theirs) => {
+    changed = true;
+    if (choice === 'ours') return ours;
+    if (choice === 'theirs') return theirs;
+    return `${ours}${theirs}`;
+  });
+  return { text: resolved, changed };
+}
+
+/**
+ * List unmerged paths from porcelain (UU, AA, DD, AU, UA, DU, UD).
+ */
+async function listConflicts(userId, projectId) {
+  const cwd = projectRoot(userId, projectId);
+  await ensureRepo(cwd);
+  const { stdout } = await git(cwd, ['status', '--porcelain=v1']);
+  const conflicts = [];
+  for (const line of stdout.split('\n')) {
+    if (!line || line.length < 3) continue;
+    const x = line[0];
+    const y = line[1];
+    const unmerged = (x === 'U' || y === 'U') || (x === 'A' && y === 'A') || (x === 'D' && y === 'D');
+    if (!unmerged) continue;
+    let filePath = line.slice(3);
+    if (filePath.includes(' -> ')) filePath = filePath.split(' -> ').pop();
+    const abs = path.join(cwd, ...filePath.replace(/\\/g, '/').split('/'));
+    let content = '';
+    let hasMarkers = false;
+    if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
+      content = fs.readFileSync(abs, 'utf8');
+      hasMarkers = content.includes('<<<<<<<');
+    }
+    conflicts.push({
+      path: filePath.replace(/\\/g, '/'),
+      status: `${x}${y}`,
+      hasMarkers,
+    });
+  }
+  return { conflicts };
+}
+
+/**
+ * Resolve one conflicted file: ours / theirs / both (markers), then stage.
+ */
+async function resolveConflict(userId, projectId, { path: filePath, choice }) {
+  if (!filePath || !['ours', 'theirs', 'both'].includes(choice)) {
+    const err = new Error('path and choice (ours|theirs|both) are required');
+    err.code = 'GIT_BAD_RESOLVE';
+    err.status = 400;
+    throw err;
+  }
+  const cwd = projectRoot(userId, projectId);
+  await ensureRepo(cwd);
+  const rel = path.normalize(filePath).replace(/^([/\\])+/, '').replace(/\\/g, '/');
+  if (!rel || rel.includes('..')) {
+    const err = new Error('Invalid path');
+    err.code = 'GIT_BAD_PATH';
+    err.status = 400;
+    throw err;
+  }
+  const abs = path.join(cwd, ...rel.split('/'));
+
+  if (choice === 'ours' || choice === 'theirs') {
+    // Prefer checkout --ours/--theirs when markers may be incomplete
+    try {
+      await git(cwd, ['checkout', choice === 'ours' ? '--ours' : '--theirs', '--', rel]);
+    } catch {
+      /* fall through to marker strip if file exists */
+    }
+  }
+
+  if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
+    const raw = fs.readFileSync(abs, 'utf8');
+    if (raw.includes('<<<<<<<')) {
+      const { text, changed } = resolveConflictText(raw, choice);
+      if (!changed && choice === 'both') {
+        const err = new Error('Could not resolve markers for both — open the file and edit manually');
+        err.code = 'GIT_RESOLVE_FAILED';
+        err.status = 400;
+        throw err;
+      }
+      fs.writeFileSync(abs, text, 'utf8');
+    } else if (choice === 'both') {
+      const err = new Error('No conflict markers found — use Ours/Theirs or edit the file');
+      err.code = 'GIT_NO_MARKERS';
+      err.status = 400;
+      throw err;
+    }
+  }
+
+  await git(cwd, ['add', '--', rel]);
+  return { path: rel, choice, resolved: true, ...(await getStatus(userId, projectId)) };
+}
+
+async function abortMerge(userId, projectId) {
+  const cwd = projectRoot(userId, projectId);
+  await ensureRepo(cwd);
+  try {
+    await git(cwd, ['merge', '--abort']);
+  } catch (err) {
+    try {
+      await git(cwd, ['rebase', '--abort']);
+    } catch {
+      throw err;
+    }
+  }
+  return getStatus(userId, projectId);
+}
+
+/**
+ * Run `gh` in the project workspace (GitHub CLI).
+ * @param {string} cwd
+ * @param {string[]} args
+ */
+async function gh(cwd, args) {
+  try {
+    const { stdout, stderr } = await execFileAsync('gh', args, {
+      cwd,
+      maxBuffer: 2 * 1024 * 1024,
+      env: {
+        ...process.env,
+        GH_PROMPT_DISABLED: '1',
+        GIT_TERMINAL_PROMPT: '0',
+      },
+    });
+    return { stdout: stdout || '', stderr: stderr || '' };
+  } catch (err) {
+    const error = new Error(err.stderr?.trim() || err.message || 'gh command failed');
+    error.code = 'GH_ERROR';
+    error.status = 400;
+    error.stdout = err.stdout || '';
+    error.stderr = err.stderr || '';
+    throw error;
+  }
+}
+
+async function listPullRequests(userId, projectId, { limit = 20 } = {}) {
+  const cwd = projectRoot(userId, projectId);
+  await ensureRepo(cwd);
+  try {
+    const { stdout } = await gh(cwd, [
+      'pr', 'list',
+      '--limit', String(Math.min(50, Math.max(1, Number(limit) || 20))),
+      '--json', 'number,title,url,state,headRefName,isDraft,author',
+    ]);
+    const pullRequests = JSON.parse(stdout || '[]');
+    return { pullRequests, available: true };
+  } catch (err) {
+    return {
+      pullRequests: [],
+      available: false,
+      error: err.message || 'gh pr list failed — run gh auth login in Terminal',
+    };
+  }
+}
+
+async function checkoutPullRequest(userId, projectId, number) {
+  const cwd = projectRoot(userId, projectId);
+  await ensureRepo(cwd);
+  const n = Number(number);
+  if (!Number.isFinite(n) || n < 1) {
+    const err = new Error('Invalid PR number');
+    err.code = 'GH_BAD_PR';
+    err.status = 400;
+    throw err;
+  }
+  await gh(cwd, ['pr', 'checkout', String(n)]);
+  return getStatus(userId, projectId);
+}
+
 module.exports = {
   getStatus,
   commit,
@@ -364,6 +600,13 @@ module.exports = {
   cloneRemote,
   listBranches,
   checkoutBranch,
+  getFileDiff,
+  listConflicts,
+  resolveConflict,
+  abortMerge,
+  resolveConflictText,
+  listPullRequests,
+  checkoutPullRequest,
   projectRoot,
   parseStatus,
 };
