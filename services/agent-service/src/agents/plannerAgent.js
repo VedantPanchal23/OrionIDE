@@ -53,11 +53,12 @@ class PlannerAgent extends BaseAgent {
    * @param {string} [rejectionFeedback] — feedback from a previous rejection
    * @returns {Promise<object>} — validated plan
    */
-  async run(goal, sessionId, rejectionFeedback) {
+  async run(goal, sessionId, rejectionFeedback, projectRules = '') {
     await this.notifyStatus(sessionId, 'thinking', { step: 'planner' });
 
+    const { appendRules } = require('../services/projectRules');
     const messages = [
-      { role: 'system', content: this.getSystemPrompt() },
+      { role: 'system', content: appendRules(this.getSystemPrompt(), projectRules) },
       { role: 'user', content: `Goal: ${goal}` },
     ];
 

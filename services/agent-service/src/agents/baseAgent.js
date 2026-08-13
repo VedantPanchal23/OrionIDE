@@ -2,14 +2,17 @@
  * Orion IDE — Base Agent
  *
  * Abstract base class for all pipeline agents.
+ * LLM credentials: session.llm (BYOK) via AsyncLocalStorage, else server env keys.
  */
 
+const { AsyncLocalStorage } = require('async_hooks');
 const groqService = require('../services/groqService');
 const openRouterService = require('../services/openRouterService');
 const axios = require('axios');
 const { createLogger } = require('../../../../shared/utils/logger');
 
 const logger = createLogger('agent-service');
+const llmContext = new AsyncLocalStorage();
 
 const NOTIFICATION_URL = process.env.NOTIFICATION_SERVICE_URL || 'http://notification-service:3006';
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
@@ -26,48 +29,46 @@ class BaseAgent {
     this.provider = provider;
   }
 
-  /**
-   * Must be implemented by subclass.
-   */
-  async run(input, sessionId) {
+  /** Run work with BYOK / session LLM config bound for callLLM */
+  static withLlm(llm, fn) {
+    return llmContext.run(llm && typeof llm === 'object' ? llm : {}, fn);
+  }
+
+  async run() {
     throw new Error(`${this.agentName}.run() not implemented`);
   }
 
-  /**
-   * Must be implemented by subclass.
-   */
   getSystemPrompt() {
     throw new Error(`${this.agentName}.getSystemPrompt() not implemented`);
   }
 
-  /**
-   * Call the configured LLM provider.
-   */
   async callLLM(messages, options = {}) {
-    if (this.provider === 'openrouter') {
-      return openRouterService.chat(this.model, messages, options);
+    const ctx = llmContext.getStore() || {};
+    const provider = options.provider || ctx.provider || this.provider;
+    const model = options.model || ctx.model || this.model;
+    const apiKey = options.apiKey || ctx.apiKey || null;
+    const baseUrl = options.baseUrl || ctx.baseUrl || null;
+    const pass = { ...options, apiKey, baseUrl };
+    delete pass.provider;
+    delete pass.model;
+
+    if (provider === 'openrouter' || provider === 'custom') {
+      return openRouterService.chat(model, messages, pass);
     }
-    return groqService.chat(this.model, messages, options);
+    return groqService.chat(model, messages, pass);
   }
 
-  /**
-   * Extract and parse JSON from LLM response text.
-   * Handles markdown code fences, leading text, etc.
-   */
   parseJsonOutput(text) {
     if (!text || typeof text !== 'string') {
       throw Object.assign(new Error('Empty LLM response'), { code: 'AGENT_EMPTY_RESPONSE' });
     }
 
-    // Remove markdown code fences
     let cleaned = text.trim();
     cleaned = cleaned.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '');
 
-    // Try direct parse
     try {
       return JSON.parse(cleaned);
     } catch {
-      // Try extracting JSON object from surrounding text
       const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         try {
@@ -81,10 +82,6 @@ class BaseAgent {
     throw Object.assign(new Error(`Failed to parse JSON from ${this.agentName} response`), { code: 'AGENT_INVALID_JSON' });
   }
 
-  /**
-   * Publish a status update to the notification service.
-   * Resolves userId from the pipeline session when not provided in payload.
-   */
   async notifyStatus(sessionId, status, payload = {}) {
     let userId = payload.userId || null;
     if (!userId && sessionId) {
@@ -107,14 +104,10 @@ class BaseAgent {
         timeout: 5000,
       });
     } catch {
-      // Non-fatal — notification delivery is best-effort
       logger.debug('Failed to send agent notification', { sessionId, agent: this.agentName });
     }
   }
 
-  /**
-   * Retry wrapper with configurable attempts.
-   */
   async retry(fn, maxRetries = 2) {
     let lastError;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {

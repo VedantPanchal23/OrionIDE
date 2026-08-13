@@ -12,6 +12,17 @@ const { createLogger } = require('../../../../shared/utils/logger');
 const logger = createLogger('agent-service');
 
 const EXECUTION_SERVICE_URL = process.env.EXECUTION_SERVICE_URL || 'http://execution-service:3004';
+const SERVICE_SECRET =
+  process.env.INTERNAL_SECRET || process.env.DRIVE_SERVICE_SECRET || '';
+
+const meshHeaders = (userId) => {
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-User-Id': userId,
+  };
+  if (SERVICE_SECRET) headers['X-Internal-Secret'] = SERVICE_SECRET;
+  return headers;
+};
 
 const SYSTEM_PROMPT = `You are the Run Agent for Orion IDE. Determine the correct command to execute the project's main entry file. Output ONLY valid JSON: { "mainFile": string, "pistonLanguage": string, "pistonVersion": string, "runCommand": string, "explanation": string }. pistonLanguage must be one of: python, javascript, typescript, java, c, cpp, csharp, go, rust, php, ruby, kotlin, swift, bash, r, dart, lua, perl. pistonVersion should be "*" for latest.`;
 
@@ -92,10 +103,11 @@ class RunAgent extends BaseAgent {
     try {
       const res = await axios.post(`${EXECUTION_SERVICE_URL}/execute`, {
         language: runConfig.pistonLanguage,
+        languageId: runConfig.pistonLanguage,
         fileName: runConfig.mainFile,
         code,
       }, {
-        headers: { 'X-User-Id': userId },
+        headers: meshHeaders(userId),
         timeout: 45000,
       });
 
@@ -109,7 +121,7 @@ class RunAgent extends BaseAgent {
         await new Promise((r) => setTimeout(r, POLL_INTERVAL));
         try {
           const resultRes = await axios.get(`${EXECUTION_SERVICE_URL}/execute/${executionId}/result`, {
-            headers: { 'X-User-Id': userId },
+            headers: meshHeaders(userId),
             timeout: 10000,
           });
           result = resultRes.data?.data;
