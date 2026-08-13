@@ -223,4 +223,84 @@ router.post('/checkout', async (req, res) => {
   }
 });
 
+router.get('/diff', async (req, res) => {
+  if (!requireUser(req, res)) return;
+  const projectId = resolveProjectId(req);
+  const filePath = req.query.path;
+  if (!projectId) {
+    return res.status(400).json({ error: { code: 'GIT_MISSING_PROJECT', message: 'projectId is required' } });
+  }
+  try {
+    res.json({ data: await gitService.getFileDiff(req.userId, projectId, filePath) });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: { code: err.code || 'GIT_ERROR', message: err.message } });
+  }
+});
+
+router.get('/conflicts', async (req, res) => {
+  if (!requireUser(req, res)) return;
+  const projectId = resolveProjectId(req);
+  if (!projectId) {
+    return res.status(400).json({ error: { code: 'GIT_MISSING_PROJECT', message: 'projectId is required' } });
+  }
+  try {
+    res.json({ data: await gitService.listConflicts(req.userId, projectId) });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: { code: err.code || 'GIT_ERROR', message: err.message } });
+  }
+});
+
+router.post('/conflicts/resolve', async (req, res) => {
+  if (!requireUser(req, res)) return;
+  const projectId = resolveProjectId(req);
+  if (!projectId) {
+    return res.status(400).json({ error: { code: 'GIT_MISSING_PROJECT', message: 'projectId is required' } });
+  }
+  try {
+    res.json({ data: await gitService.resolveConflict(req.userId, projectId, req.body || {}) });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: { code: err.code || 'GIT_ERROR', message: err.message } });
+  }
+});
+
+router.post('/merge/abort', async (req, res) => {
+  if (!requireUser(req, res)) return;
+  const projectId = resolveProjectId(req);
+  if (!projectId) {
+    return res.status(400).json({ error: { code: 'GIT_MISSING_PROJECT', message: 'projectId is required' } });
+  }
+  try {
+    res.json({ data: await gitService.abortMerge(req.userId, projectId) });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: { code: err.code || 'GIT_ERROR', message: err.message } });
+  }
+});
+
+router.get('/pull-requests', async (req, res) => {
+  if (!requireUser(req, res)) return;
+  const projectId = resolveProjectId(req);
+  if (!projectId) {
+    return res.status(400).json({ error: { code: 'GIT_MISSING_PROJECT', message: 'projectId is required' } });
+  }
+  try {
+    res.json({ data: await gitService.listPullRequests(req.userId, projectId, { limit: req.query.limit }) });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: { code: err.code || 'GH_ERROR', message: err.message } });
+  }
+});
+
+router.post('/pull-requests/checkout', async (req, res) => {
+  if (!requireUser(req, res)) return;
+  const projectId = resolveProjectId(req);
+  if (!projectId) {
+    return res.status(400).json({ error: { code: 'GIT_MISSING_PROJECT', message: 'projectId is required' } });
+  }
+  try {
+    const number = req.body?.number ?? req.body?.pr;
+    res.json({ data: await gitService.checkoutPullRequest(req.userId, projectId, number) });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: { code: err.code || 'GH_ERROR', message: err.message } });
+  }
+});
+
 module.exports = router;

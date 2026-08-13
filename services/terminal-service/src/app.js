@@ -53,6 +53,8 @@ const corsOrigins = process.env.CORS_ORIGINS
 app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(express.json());
 
+const { requireInternalSecret } = require('../../../shared/utils/internalAuth');
+
 app.use((req, res, next) => {
   req.requestId = req.headers['x-request-id'] || uuidv4();
   res.setHeader('X-Request-Id', req.requestId);
@@ -61,7 +63,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── Health ────────────────────────────────────────────────────────────────
+// Health stays open for compose probes; everything else requires mesh secret
 app.get('/health', (req, res) => {
   const stats = ptyManager.getStats();
   res.json({
@@ -72,6 +74,7 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.use(requireInternalSecret({ service: 'terminal-service' }));
 // ── REST: List user's terminals ──────────────────────────────────────────
 app.get('/terminal/sessions', (req, res) => {
   if (!req.userId) {
@@ -122,6 +125,17 @@ app.post('/terminal/sessions', async (req, res) => {
       googleAccessToken: req.googleAccessToken,
     });
     console.log(`[terminal] Created terminal ${result.terminalId} for user ${req.userId}`);
+
+    // Watch local workspace → debounce push to Drive (mkdir/touch/rm)
+    if (folderId && req.googleAccessToken && result.cwd) {
+      workspaceSync.startAutoPush({
+        userId: req.userId,
+        projectFolderId: folderId,
+        googleAccessToken: req.googleAccessToken,
+        cwd: result.cwd,
+      });
+    }
+
     res.status(201).json({
       data: {
         ...result,
@@ -162,13 +176,25 @@ app.post('/terminal/sessions/:terminalId/sync', async (req, res) => {
     });
   }
   try {
-    const result = await workspaceSync.pushProject({
-      userId: req.userId,
-      projectFolderId: session.projectFolderId,
-      googleAccessToken: token,
-      cwd: session.cwd,
-    });
-    res.json({ data: result });
+    const mode = (req.body && req.body.mode) || 'push';
+    let pullResult = null;
+    let pushResult = null;
+    if (mode === 'pull' || mode === 'both') {
+      pullResult = await workspaceSync.pullProject({
+        userId: req.userId,
+        projectFolderId: session.projectFolderId,
+        googleAccessToken: token,
+      });
+    }
+    if (mode === 'push' || mode === 'both' || !req.body?.mode) {
+      pushResult = await workspaceSync.pushProject({
+        userId: req.userId,
+        projectFolderId: session.projectFolderId,
+        googleAccessToken: token,
+        cwd: session.cwd,
+      });
+    }
+    res.json({ data: { pull: pullResult, push: pushResult, mode } });
   } catch (err) {
     res.status(err.status || 500).json({
       error: { code: err.code || 'TERMINAL_SYNC_ERROR', message: err.message },
@@ -191,6 +217,9 @@ app.delete('/terminal/sessions/:terminalId', async (req, res) => {
 
   let syncResult = null;
   const token = req.googleAccessToken || session.googleAccessToken;
+  if (session.cwd) {
+    workspaceSync.stopAutoPush(session.cwd);
+  }
   if (session.projectFolderId && token) {
     try {
       syncResult = await workspaceSync.pushProject({
@@ -210,11 +239,39 @@ app.delete('/terminal/sessions/:terminalId', async (req, res) => {
 });
 
 // ── Forwarded ports ───────────────────────────────────────────────────────
-app.get('/terminal/ports', (req, res) => {
+app.get('/terminal/ports', async (req, res) => {
   if (!req.userId) {
     return res.status(401).json({ error: { code: 'AUTH_REQUIRED', message: 'Missing X-User-Id header' } });
   }
-  res.json({ data: { ports: portsService.listPorts(req.userId) } });
+  const ports = portsService.listPorts(req.userId);
+  const wantDetect = String(req.query.detect || '') === '1' || String(req.query.detect || '') === 'true';
+  if (!wantDetect) {
+    return res.json({ data: { ports } });
+  }
+  try {
+    const listening = await portsService.detectListeningPorts(req.userId);
+    const listeningSet = new Set(listening.map((l) => l.port));
+    const enriched = ports.map((p) => ({ ...p, listening: listeningSet.has(p.port) }));
+    return res.json({ data: { ports: enriched, listening } });
+  } catch (err) {
+    return res.status(500).json({
+      error: { code: 'PORTS_DETECT_FAILED', message: err.message || 'Port detect failed' },
+    });
+  }
+});
+
+app.get('/terminal/ports/detect', async (req, res) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: { code: 'AUTH_REQUIRED', message: 'Missing X-User-Id header' } });
+  }
+  try {
+    const listening = await portsService.detectListeningPorts(req.userId);
+    res.json({ data: { listening } });
+  } catch (err) {
+    res.status(500).json({
+      error: { code: 'PORTS_DETECT_FAILED', message: err.message || 'Port detect failed' },
+    });
+  }
 });
 
 app.post('/terminal/ports', (req, res) => {
@@ -240,6 +297,117 @@ app.delete('/terminal/ports/:id', (req, res) => {
   res.json({ data: { deleted: true } });
 });
 
+/**
+ * HTTP reverse-proxy to a registered workspace port (dev servers).
+ * Path: /terminal/proxy/:port/* → http://127.0.0.1:port/*
+ *
+ * Rewrites Location + HTML absolute URLs so Vite/SPAs work under
+ * /api/terminal/proxy/:port/ when ORION_VITE_BASE is not set.
+ */
+const PORTS_PUBLIC_PREFIX = process.env.PORTS_PUBLIC_PREFIX || '/api/terminal/proxy';
+
+app.use('/terminal/proxy/:port', (req, res) => {
+  if (!req.userId) {
+    return res.status(401).json({ error: { code: 'AUTH_REQUIRED', message: 'Missing X-User-Id header' } });
+  }
+  const port = Number(req.params.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    return res.status(400).json({ error: { code: 'PORTS_INVALID', message: 'Invalid port' } });
+  }
+  if (!portsService.isRegistered(req.userId, port)) {
+    return res.status(403).json({
+      error: { code: 'PORTS_NOT_REGISTERED', message: 'Register this port in the Ports panel first' },
+    });
+  }
+
+  let targetPath = req.url || '/';
+  try {
+    const u = new URL(targetPath, 'http://127.0.0.1');
+    u.searchParams.delete('token');
+    targetPath = `${u.pathname}${u.search}` || '/';
+  } catch {
+    /* keep raw */
+  }
+
+  const publicBase = `${PORTS_PUBLIC_PREFIX}/${port}`;
+  const headers = { ...req.headers, host: `127.0.0.1:${port}` };
+  delete headers['content-length'];
+  delete headers['Content-Length'];
+
+  const proxyReq = http.request(
+    {
+      hostname: '127.0.0.1',
+      port,
+      path: targetPath,
+      method: req.method,
+      headers,
+      timeout: 30000,
+    },
+    (proxyRes) => {
+      const outHeaders = { ...proxyRes.headers };
+      const loc = outHeaders.location || outHeaders.Location;
+      if (typeof loc === 'string' && loc.startsWith('/') && !loc.startsWith(publicBase)) {
+        const next = `${publicBase}${loc}`;
+        outHeaders.location = next;
+        outHeaders.Location = next;
+      }
+
+      const ct = String(outHeaders['content-type'] || outHeaders['Content-Type'] || '');
+      const isHtml = ct.includes('text/html');
+      if (!isHtml) {
+        res.writeHead(proxyRes.statusCode || 502, outHeaders);
+        proxyRes.pipe(res);
+        return;
+      }
+
+      const chunks = [];
+      proxyRes.on('data', (c) => chunks.push(c));
+      proxyRes.on('end', () => {
+        let body = Buffer.concat(chunks).toString('utf8');
+        // Rewrite root-absolute asset URLs into the proxy prefix.
+        body = body
+          .replace(/(["'])\/(?!\/)/g, `$1${publicBase}/`)
+          .replace(new RegExp(`${publicBase}${publicBase}`, 'g'), publicBase);
+        delete outHeaders['content-length'];
+        delete outHeaders['Content-Length'];
+        outHeaders['content-length'] = Buffer.byteLength(body);
+        res.writeHead(proxyRes.statusCode || 502, outHeaders);
+        res.end(body);
+      });
+      proxyRes.on('error', () => {
+        if (!res.headersSent) {
+          res.status(502).json({
+            error: { code: 'PORTS_PROXY_ERROR', message: `Nothing listening on port ${port}` },
+          });
+        }
+      });
+    },
+  );
+
+  proxyReq.on('error', (err) => {
+    if (!res.headersSent) {
+      res.status(502).json({
+        error: {
+          code: 'PORTS_PROXY_ERROR',
+          message: `Nothing listening on port ${port}`,
+          details: process.env.NODE_ENV === 'development' ? err.message : null,
+        },
+      });
+    } else {
+      res.end();
+    }
+  });
+
+  proxyReq.on('timeout', () => {
+    proxyReq.destroy();
+    if (!res.headersSent) {
+      res.status(504).json({ error: { code: 'PORTS_PROXY_TIMEOUT', message: 'Upstream timed out' } });
+    }
+  });
+
+  req.pipe(proxyReq);
+});
+
 // ── Git (workspace projects under TERMINAL_WORKSPACE_ROOT) ────────────────
 app.use('/git', gitRoutes);
 
@@ -257,13 +425,107 @@ app.use((err, req, res, _next) => {
 // ── Create HTTP server ────────────────────────────────────────────────────
 const server = http.createServer(app);
 
-// ── WebSocket server ──────────────────────────────────────────────────────
-const wss = new WebSocketServer({ server, path: '/terminal/ws/terminal' });
+function writeUpgradeError(socket, code, message) {
+  try {
+    socket.write(`HTTP/1.1 ${code} ${message}\r\nConnection: close\r\n\r\n`);
+  } catch { /* ignore */ }
+  try { socket.destroy(); } catch { /* ignore */ }
+}
+
+function headerLines(statusLine, headers) {
+  let out = `${statusLine}\r\n`;
+  Object.keys(headers).forEach((k) => {
+    const v = headers[k];
+    if (Array.isArray(v)) v.forEach((item) => { out += `${k}: ${item}\r\n`; });
+    else if (v !== undefined) out += `${k}: ${v}\r\n`;
+  });
+  return `${out}\r\n`;
+}
+
+/**
+ * Proxy WebSocket upgrades to a registered workspace port (Vite HMR, etc.).
+ */
+function handlePortProxyUpgrade(req, socket, head, url) {
+  const match = url.pathname.match(/^\/terminal\/proxy\/(\d+)(\/.*)?$/);
+  if (!match) {
+    writeUpgradeError(socket, 404, 'Not Found');
+    return;
+  }
+  const port = Number(match[1]);
+  const userId = req.headers['x-user-id'];
+  if (!userId) {
+    writeUpgradeError(socket, 401, 'Unauthorized');
+    return;
+  }
+  if (!Number.isInteger(port) || !portsService.isRegistered(userId, port)) {
+    writeUpgradeError(socket, 403, 'Forbidden');
+    return;
+  }
+
+  const prefix = `/terminal/proxy/${port}`;
+  let targetPath = url.pathname.slice(prefix.length) || '/';
+  if (!targetPath.startsWith('/')) targetPath = `/${targetPath}`;
+  const params = new URLSearchParams(url.searchParams);
+  params.delete('token');
+  const qs = params.toString();
+  const upstreamPath = `${targetPath}${qs ? `?${qs}` : ''}`;
+
+  const headers = { ...req.headers, host: `127.0.0.1:${port}` };
+  delete headers['content-length'];
+
+  const proxyReq = http.request({
+    hostname: '127.0.0.1',
+    port,
+    path: upstreamPath,
+    method: 'GET',
+    headers,
+  });
+
+  proxyReq.on('upgrade', (proxyRes, proxySocket, proxyHead) => {
+    try {
+      socket.write(headerLines('HTTP/1.1 101 Switching Protocols', proxyRes.headers));
+      if (proxyHead && proxyHead.length) proxySocket.write(proxyHead);
+      if (head && head.length) socket.write(head);
+      proxySocket.pipe(socket);
+      socket.pipe(proxySocket);
+    } catch {
+      try { proxySocket.destroy(); } catch { /* ignore */ }
+      try { socket.destroy(); } catch { /* ignore */ }
+    }
+  });
+
+  proxyReq.on('error', () => writeUpgradeError(socket, 502, 'Bad Gateway'));
+  proxyReq.on('response', () => writeUpgradeError(socket, 502, 'Bad Gateway'));
+  proxyReq.end();
+}
+
+// ── WebSocket server (PTY) + port-proxy upgrades ──────────────────────────
+const wss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (req, socket, head) => {
+  try {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    if (url.pathname.startsWith('/terminal/proxy/')) {
+      handlePortProxyUpgrade(req, socket, head, url);
+      return;
+    }
+    if (url.pathname === '/terminal/ws/terminal') {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit('connection', ws, req);
+      });
+      return;
+    }
+    writeUpgradeError(socket, 404, 'Not Found');
+  } catch {
+    writeUpgradeError(socket, 400, 'Bad Request');
+  }
+});
 
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const terminalId = url.searchParams.get('terminalId');
-  const connectToken = url.searchParams.get('token') || url.searchParams.get('connectToken');
+  // Prefer dedicated connectToken; `token` may be a JWT when proxied via gateway.
+  const connectToken = url.searchParams.get('connectToken') || url.searchParams.get('token');
 
   if (!terminalId) {
     ws.send(JSON.stringify({ type: 'error', message: 'Missing terminalId query parameter' }));
@@ -309,7 +571,22 @@ wss.on('connection', (ws, req) => {
       ws.send(JSON.stringify({ type: 'exit', code: exitCode, signal }));
       ws.close(1000, 'PTY exited');
     }
-    ptyManager.destroySession(terminalId);
+    // Best-effort final push then destroy (don't block forever)
+    const token = session.googleAccessToken;
+    const cwd = session.cwd;
+    const projectFolderId = session.projectFolderId;
+    const userId = session.userId;
+    if (cwd) workspaceSync.stopAutoPush(cwd);
+    const finish = () => {
+      try { ptyManager.destroySession(terminalId); } catch { /* ignore */ }
+    };
+    if (projectFolderId && token && cwd) {
+      workspaceSync.pushProject({ userId, projectFolderId, googleAccessToken: token, cwd })
+        .catch((err) => console.warn(`[terminal] push on PTY exit failed: ${err.message}`))
+        .finally(finish);
+    } else {
+      finish();
+    }
   });
 
   // ── WebSocket → PTY (stdin + control) ───────────────────────────────
@@ -365,7 +642,27 @@ let cleanupInterval = null;
 
 if (process.env.NODE_ENV !== 'test') {
   cleanupInterval = setInterval(() => {
-    ptyManager.cleanupIdleSessions();
+    const idle = ptyManager.listIdleSessions();
+    for (const session of idle) {
+      if (session.cwd) workspaceSync.stopAutoPush(session.cwd);
+      const pushThenDestroy = async () => {
+        if (session.projectFolderId && session.googleAccessToken && session.cwd) {
+          try {
+            await workspaceSync.pushProject({
+              userId: session.userId,
+              projectFolderId: session.projectFolderId,
+              googleAccessToken: session.googleAccessToken,
+              cwd: session.cwd,
+            });
+          } catch (err) {
+            console.warn(`[terminal] push on idle cleanup failed (${session.terminalId}): ${err.message}`);
+          }
+        }
+        ptyManager.destroySession(session.terminalId);
+        console.log(`[terminal] Idle cleanup destroyed ${session.terminalId}`);
+      };
+      pushThenDestroy();
+    }
   }, 5 * 60 * 1000); // Every 5 minutes
 
   // ── Start server ──────────────────────────────────────────────────────────
