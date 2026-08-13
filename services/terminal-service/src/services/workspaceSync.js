@@ -125,13 +125,75 @@ function driveRequestOnce(method, urlPath, { headers, body } = {}) {
 async function driveRequest(method, urlPath, opts = {}) {
   const { withRetry } = require('../../../../shared/utils/retry');
   return withRetry(
-    () => driveRequestOnce(method, urlPath, opts),
+    () => driveRequestImpl(method, urlPath, opts),
     {
       retries: Number(process.env.TERMINAL_SYNC_RETRIES) || 4,
       baseMs: 400,
       maxMs: 10000,
     }
   );
+}
+
+/** @type {typeof driveRequestOnce} */
+let driveRequestImpl = driveRequestOnce;
+
+/** Test hook — restore with `_setDriveRequestForTests(null)`. */
+function _setDriveRequestForTests(fn) {
+  driveRequestImpl = typeof fn === 'function' ? fn : driveRequestOnce;
+}
+
+/**
+ * Ask auth-service for a fresh Google access token (renews via Google refresh if needed).
+ */
+async function resolveFreshGoogleToken(userId, fallbackToken) {
+  const authBase = (process.env.AUTH_SERVICE_URL || 'http://auth-service:3001').replace(/\/$/, '');
+  const secret = process.env.INTERNAL_SECRET || process.env.DRIVE_SERVICE_SECRET || '';
+  if (!userId || !secret) return fallbackToken || null;
+
+  try {
+    const url = new URL(`${authBase}/auth/internal/google-token`);
+    const lib = url.protocol === 'https:' ? https : http;
+    const data = await new Promise((resolve, reject) => {
+      const req = lib.request(
+        {
+          protocol: url.protocol,
+          hostname: url.hostname,
+          port: url.port || (url.protocol === 'https:' ? 443 : 80),
+          path: `${url.pathname}${url.search}`,
+          method: 'GET',
+          headers: {
+            'X-User-Id': userId,
+            'X-Internal-Secret': secret,
+            Accept: 'application/json',
+          },
+          timeout: 8000,
+        },
+        (res) => {
+          const chunks = [];
+          res.on('data', (c) => chunks.push(c));
+          res.on('end', () => {
+            const text = Buffer.concat(chunks).toString('utf8');
+            let json;
+            try { json = JSON.parse(text); } catch { json = {}; }
+            if (res.statusCode >= 400) {
+              reject(Object.assign(new Error(json?.error?.message || `auth ${res.statusCode}`), {
+                status: res.statusCode,
+              }));
+              return;
+            }
+            resolve(json?.data ?? json);
+          });
+        }
+      );
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('auth token refresh timeout')); });
+      req.end();
+    });
+    return data?.googleAccessToken || fallbackToken || null;
+  } catch (err) {
+    console.warn(`[terminal-sync] google token refresh failed: ${err.message}`);
+    return fallbackToken || null;
+  }
 }
 
 function readManifest(root) {
@@ -163,8 +225,19 @@ async function pullFolder(folderId, localDir, ctx, depth, counters, manifest, re
   });
   const items = listed.files || [];
 
+  // Drive allows duplicate sibling names; don't map both onto the same local path.
+  const seenNames = new Set();
+
   for (const item of items) {
     if (!item?.name || SKIP_NAMES.has(item.name)) continue;
+    const nameKey = String(item.name).toLowerCase();
+    if (seenNames.has(nameKey)) {
+      counters.skippedDuplicates = (counters.skippedDuplicates || 0) + 1;
+      console.warn(`[terminal-sync] skipping duplicate Drive name "${item.name}" under ${relBase || '.'}`);
+      continue;
+    }
+    seenNames.add(nameKey);
+
     if (counters.files >= MAX_FILES) {
       throw Object.assign(new Error(`Sync file limit exceeded (${MAX_FILES})`), { code: 'TERMINAL_SYNC_LIMIT' });
     }
@@ -174,9 +247,12 @@ async function pullFolder(folderId, localDir, ctx, depth, counters, manifest, re
     const target = path.join(localDir, item.name);
 
     if (item.isFolder || item.mimeType === 'application/vnd.google-apps.folder') {
+      if (ctx.visitedFolders) ctx.visitedFolders.add(relKey);
       await pullFolder(item.id, target, ctx, depth + 1, counters, manifest, rel);
       continue;
     }
+
+    if (ctx.visitedFiles) ctx.visitedFiles.add(relKey);
 
     // Resume: skip if already pulled with same Drive id and local file exists
     if (
@@ -188,14 +264,16 @@ async function pullFolder(folderId, localDir, ctx, depth, counters, manifest, re
       continue;
     }
 
-    const contentData = await driveRequest('GET', `/drive/files/${encodeURIComponent(item.id)}`, {
-      headers: ctx.headers,
-    });
+    const contentData = await driveRequest(
+      'GET',
+      `/drive/files/${encodeURIComponent(item.id)}?asBinary=1`,
+      { headers: ctx.headers }
+    );
     let content = typeof contentData.content === 'string'
       ? contentData.content
       : (contentData.content ?? '');
 
-    // Drive service returns text today; support base64 binary payloads when present
+    // Prefer base64 from Drive (correct for binary); fall back to utf8 text
     let buffer;
     if (contentData.encoding === 'base64' && typeof content === 'string') {
       buffer = Buffer.from(content, 'base64');
@@ -265,15 +343,43 @@ async function pullProject({ userId, projectFolderId, googleAccessToken }) {
   };
   const counters = { files: 0, skipped: 0, skippedBinary: 0 };
   const ctx = { headers, checkpointRoot: root };
+  const visitedFiles = new Set();
+  const visitedFolders = new Set(['.']);
+  ctx.visitedFiles = visitedFiles;
+  ctx.visitedFolders = visitedFolders;
 
   await pullFolder(projectFolderId, root, ctx, 0, counters, manifest, '');
+
+  // Drop manifest entries that no longer exist on Drive
+  for (const rel of Object.keys(manifest.files || {})) {
+    if (!visitedFiles.has(rel)) {
+      delete manifest.files[rel];
+      delete manifest.hashes?.[rel];
+      delete manifest.meta?.[rel];
+      delete manifest.remoteHashes?.[rel];
+    }
+  }
+  for (const rel of Object.keys(manifest.folders || {})) {
+    if (rel !== '.' && !visitedFolders.has(rel)) delete manifest.folders[rel];
+  }
+
+  // Prune local files/folders that are no longer on Drive so terminal
+  // auto-push cannot resurrect IDE/Drive deletes.
+  const keepFiles = new Set(Object.keys(manifest.files || {}));
+  const keepFolders = new Set(Object.keys(manifest.folders || {}).filter((k) => k && k !== '.'));
+  const pruned = pruneLocalAgainstManifest(root, keepFiles, keepFolders);
+  counters.pruned = pruned.pruned || 0;
+
   writeManifest(root, manifest);
+
+  quietAutoPushAfterPull(root);
 
   return {
     cwd: root,
     fileCount: counters.files,
     skipped: counters.skipped || 0,
     skippedBinary: counters.skippedBinary || 0,
+    pruned: counters.pruned || 0,
     resumed: resume,
     projectFolderId,
   };
@@ -294,6 +400,51 @@ function walkLocalFiles(dir, base, out) {
   }
 }
 
+/** Collect every directory under the workspace (relative paths, deepest last). */
+function walkLocalDirs(dir, base, out) {
+  if (!fs.existsSync(dir)) return;
+  for (const name of fs.readdirSync(dir)) {
+    if (SKIP_NAMES.has(name)) continue;
+    const full = path.join(dir, name);
+    let st;
+    try { st = fs.statSync(full); } catch { continue; }
+    if (!st.isDirectory()) continue;
+    const rel = path.relative(base, full).replace(/\\/g, '/');
+    walkLocalDirs(full, base, out);
+    out.push({ rel, full });
+  }
+}
+
+async function listChildrenCached(parentId, ctx) {
+  if (!ctx.listCache) ctx.listCache = new Map();
+  if (ctx.listCache.has(parentId)) return ctx.listCache.get(parentId);
+  const listed = await driveRequest(
+    'GET',
+    `/drive/files?folderId=${encodeURIComponent(parentId)}`,
+    { headers: ctx.headers }
+  );
+  const items = listed.files || [];
+  ctx.listCache.set(parentId, items);
+  return items;
+}
+
+function invalidateListCache(parentId, ctx) {
+  if (ctx?.listCache) ctx.listCache.delete(parentId);
+}
+
+async function findChildByName(parentId, name, ctx, { folder = false } = {}) {
+  const items = await listChildrenCached(parentId, ctx);
+  const needle = String(name).toLowerCase();
+  // If Drive already has duplicates, reuse the first match — never create another
+  const match = items.find((item) => {
+    const isFolder = Boolean(item.isFolder || item.mimeType === 'application/vnd.google-apps.folder');
+    if (folder && !isFolder) return false;
+    if (!folder && isFolder) return false;
+    return String(item.name || '').toLowerCase() === needle;
+  });
+  return match || null;
+}
+
 async function ensureParentFolder(relPath, manifest, ctx, projectFolderId) {
   const parts = relPath.split('/').slice(0, -1);
   let parentId = projectFolderId;
@@ -304,18 +455,89 @@ async function ensureParentFolder(relPath, manifest, ctx, projectFolderId) {
       parentId = manifest.folders[acc];
       continue;
     }
-    const created = await driveRequest('POST', '/drive/files', {
-      headers: ctx.headers,
-      body: { parentFolderId: parentId, name: part, type: 'folder' },
-    });
-    parentId = created.id;
-    manifest.folders[acc] = parentId;
+    // Reuse an existing Drive folder with the same name — never create duplicates
+    const existing = await findChildByName(parentId, part, ctx, { folder: true });
+    if (existing?.id) {
+      parentId = existing.id;
+      manifest.folders[acc] = parentId;
+      continue;
+    }
+    try {
+      const created = await driveRequest('POST', '/drive/files', {
+        headers: ctx.headers,
+        body: { parentFolderId: parentId, name: part, type: 'folder' },
+      });
+      invalidateListCache(parentId, ctx);
+      parentId = created.id;
+      manifest.folders[acc] = parentId;
+    } catch (err) {
+      if (err.status === 409) {
+        invalidateListCache(parentId, ctx);
+        const again = await findChildByName(parentId, part, ctx, { folder: true });
+        if (again?.id) {
+          parentId = again.id;
+          manifest.folders[acc] = parentId;
+          continue;
+        }
+      }
+      throw err;
+    }
   }
   return parentId;
 }
 
 /**
- * Push local workspace files back to Drive using the sync manifest.
+ * Ensure a folder path exists on Drive (including empty mkdir trees).
+ * Looks up siblings by name before creating to avoid duplicate "s" folders.
+ */
+async function ensureFolderPath(relDir, manifest, ctx, projectFolderId) {
+  if (!relDir || relDir === '.') return projectFolderId;
+  const parts = relDir.split('/').filter(Boolean);
+  let parentId = projectFolderId;
+  let acc = '';
+  for (const part of parts) {
+    acc = acc ? `${acc}/${part}` : part;
+    if (manifest.folders[acc]) {
+      parentId = manifest.folders[acc];
+      continue;
+    }
+    const existing = await findChildByName(parentId, part, ctx, { folder: true });
+    if (existing?.id) {
+      parentId = existing.id;
+      manifest.folders[acc] = parentId;
+      continue;
+    }
+    try {
+      const created = await driveRequest('POST', '/drive/files', {
+        headers: ctx.headers,
+        body: { parentFolderId: parentId, name: part, type: 'folder' },
+      });
+      invalidateListCache(parentId, ctx);
+      parentId = created.id;
+      manifest.folders[acc] = parentId;
+    } catch (err) {
+      // Race: another push created it — adopt the existing folder
+      if (err.status === 409) {
+        invalidateListCache(parentId, ctx);
+        const again = await findChildByName(parentId, part, ctx, { folder: true });
+        if (again?.id) {
+          parentId = again.id;
+          manifest.folders[acc] = parentId;
+          continue;
+        }
+      }
+      throw err;
+    }
+  }
+  return parentId;
+}
+
+/** Serialize pushes per workspace so parallel watchers can't mint duplicate folders */
+const pushLocks = new Map();
+
+/**
+ * Push local workspace files (and empty folders) back to Drive.
+ * Uses a promise-chain mutex (safe under concurrent awaiters).
  */
 async function pushProject({ userId, projectFolderId, googleAccessToken, cwd }) {
   const root = cwd || projectRoot(userId, projectFolderId);
@@ -323,6 +545,23 @@ async function pushProject({ userId, projectFolderId, googleAccessToken, cwd }) 
     throw Object.assign(new Error('Local workspace not found'), { code: 'TERMINAL_SYNC_MISSING' });
   }
 
+  let release;
+  const myTurn = new Promise((resolve) => { release = resolve; });
+  const prev = pushLocks.get(root) || Promise.resolve();
+  const tail = prev.then(() => myTurn);
+  pushLocks.set(root, tail);
+
+  await prev;
+  try {
+    return await pushProjectUnlocked({ userId, projectFolderId, googleAccessToken, cwd: root });
+  } finally {
+    release();
+    if (pushLocks.get(root) === tail) pushLocks.delete(root);
+  }
+}
+
+async function pushProjectUnlocked({ userId, projectFolderId, googleAccessToken, cwd }) {
+  const root = cwd;
   const serviceSecret = process.env.INTERNAL_SECRET || process.env.DRIVE_SERVICE_SECRET || '';
   const headers = buildHeaders({ userId, googleAccessToken, serviceSecret });
   const ctx = { headers };
@@ -334,16 +573,34 @@ async function pushProject({ userId, projectFolderId, googleAccessToken, cwd }) 
 
   const localFiles = [];
   walkLocalFiles(root, root, localFiles);
+  const localDirs = [];
+  walkLocalDirs(root, root, localDirs);
 
   let updated = 0;
   let created = 0;
   let deleted = 0;
+  let foldersCreated = 0;
   let skipped = 0;
   const conflicts = [];
 
   const localRelSet = new Set(localFiles.map((f) => f.rel));
+  const localDirSet = new Set(localDirs.map((d) => d.rel));
   manifest.hashes = manifest.hashes || {};
   manifest.meta = manifest.meta || {};
+  manifest.folders = manifest.folders || { '.': folderId };
+  manifest.folders['.'] = folderId;
+
+  // Create empty directories on Drive (mkdir that never got a file)
+  for (const { rel } of localDirs) {
+    if (manifest.folders[rel]) continue;
+    try {
+      const before = manifest.folders[rel];
+      await ensureFolderPath(rel, manifest, ctx, folderId);
+      if (!before && manifest.folders[rel]) foldersCreated += 1;
+    } catch (err) {
+      conflicts.push({ path: rel, reason: 'folder_create_failed', message: err.message });
+    }
+  }
 
   // Delete Drive files that exist in the manifest but were removed locally
   for (const [rel, fileId] of Object.entries(manifest.files || {})) {
@@ -369,6 +626,25 @@ async function pushProject({ userId, projectFolderId, googleAccessToken, cwd }) 
     }
   }
 
+  // Delete Drive folders removed locally (deepest first)
+  const manifestFolders = Object.keys(manifest.folders || {})
+    .filter((rel) => rel && rel !== '.')
+    .sort((a, b) => b.split('/').length - a.split('/').length);
+  for (const rel of manifestFolders) {
+    if (localDirSet.has(rel)) continue;
+    const driveFolderId = manifest.folders[rel];
+    if (!driveFolderId) continue;
+    try {
+      await driveRequest('DELETE', `/drive/files/${encodeURIComponent(driveFolderId)}`, {
+        headers: ctx.headers,
+      });
+      delete manifest.folders[rel];
+      deleted += 1;
+    } catch (err) {
+      if (err.status === 404) delete manifest.folders[rel];
+    }
+  }
+
   for (const { rel, full } of localFiles) {
     const buffer = fs.readFileSync(full);
     const hash = sha256(buffer);
@@ -376,7 +652,6 @@ async function pushProject({ userId, projectFolderId, googleAccessToken, cwd }) 
     const existingId = manifest.files[rel];
     const prevHash = manifest.hashes[rel];
 
-    // Unchanged since last sync — skip
     if (existingId && prevHash && prevHash === hash) {
       skipped += 1;
       continue;
@@ -392,20 +667,26 @@ async function pushProject({ userId, projectFolderId, googleAccessToken, cwd }) 
       : { content: buffer.toString('utf8') };
 
     if (existingId) {
-      // Conflict-aware: if Drive copy hash diverged and local also changed, record conflict
-      // (Drive service doesn't return hash yet — we detect via optional remoteHash in manifest)
-      if (manifest.remoteHashes?.[rel] && manifest.remoteHashes[rel] !== prevHash && prevHash !== hash) {
+      // Conflict heuristic: local content changed since last sync AND Drive md5
+      // (when known) still matches the md5 we last pulled — safe overwrite.
+      // Never compare md5Checksum against local sha256 (different algorithms).
+      const knownRemoteMd5 = manifest.remoteHashes?.[rel];
+      if (
+        prevHash
+        && prevHash !== hash
+        && knownRemoteMd5
+        && process.env.TERMINAL_SYNC_CONFLICT_STRATEGY === 'skip'
+      ) {
+        // Without a fresh Drive md5 we can't prove remote divergence; skip only
+        // when explicitly configured and we know local drifted from last sync.
         conflicts.push({
           path: rel,
-          reason: 'both_modified',
+          reason: 'local_modified_skip',
           localHash: hash,
           baseHash: prevHash,
-          remoteHash: manifest.remoteHashes[rel],
+          remoteMd5: knownRemoteMd5,
         });
-        // Keep local; still push (last-write-wins) unless conflictStrategy=skip
-        if (process.env.TERMINAL_SYNC_CONFLICT_STRATEGY === 'skip') {
-          continue;
-        }
+        continue;
       }
 
       try {
@@ -414,8 +695,8 @@ async function pushProject({ userId, projectFolderId, googleAccessToken, cwd }) 
           body: bodyContent,
         });
         manifest.hashes[rel] = hash;
-        manifest.remoteHashes = manifest.remoteHashes || {};
-        manifest.remoteHashes[rel] = hash;
+        // remoteHashes stores Drive MD5 only — clear until next pull refreshes it
+        if (manifest.remoteHashes) delete manifest.remoteHashes[rel];
         manifest.meta[rel] = { binary, size: buffer.length };
         updated += 1;
       } catch (err) {
@@ -434,14 +715,37 @@ async function pushProject({ userId, projectFolderId, googleAccessToken, cwd }) 
             ...bodyContent,
           },
         });
+        invalidateListCache(parentId, ctx);
         manifest.files[rel] = createdFile.id;
         manifest.hashes[rel] = hash;
-        manifest.remoteHashes = manifest.remoteHashes || {};
-        manifest.remoteHashes[rel] = hash;
+        if (manifest.remoteHashes) delete manifest.remoteHashes[rel];
         manifest.meta[rel] = { binary, size: buffer.length };
         created += 1;
       } catch (err) {
-        conflicts.push({ path: rel, reason: 'create_failed', message: err.message });
+        if (err.status === 409) {
+          // Same-name file already on Drive — adopt it and flush content
+          invalidateListCache(parentId, ctx);
+          const existing = await findChildByName(parentId, name, ctx, { folder: false });
+          if (existing?.id) {
+            try {
+              await driveRequest('PUT', `/drive/files/${encodeURIComponent(existing.id)}/flush`, {
+                headers: ctx.headers,
+                body: bodyContent,
+              });
+              manifest.files[rel] = existing.id;
+              manifest.hashes[rel] = hash;
+              if (manifest.remoteHashes) delete manifest.remoteHashes[rel];
+              manifest.meta[rel] = { binary, size: buffer.length };
+              updated += 1;
+            } catch (e2) {
+              conflicts.push({ path: rel, reason: 'adopt_failed', message: e2.message });
+            }
+          } else {
+            conflicts.push({ path: rel, reason: 'create_failed', message: err.message });
+          }
+        } else {
+          conflicts.push({ path: rel, reason: 'create_failed', message: err.message });
+        }
       }
     }
   }
@@ -455,11 +759,198 @@ async function pushProject({ userId, projectFolderId, googleAccessToken, cwd }) 
     updated,
     created,
     deleted,
+    foldersCreated,
     skipped,
     conflicts,
     fileCount: localFiles.length,
+    folderCount: localDirs.length,
     cwd: root,
   };
+}
+
+/** Active fs watchers for auto-push (cwd → handle) */
+const autoPushWatchers = new Map();
+
+function stopAutoPush(cwd) {
+  const entry = autoPushWatchers.get(cwd);
+  if (!entry) return;
+  try { entry.watcher.close(); } catch { /* ignore */ }
+  if (entry.timer) clearTimeout(entry.timer);
+  if (entry.poll) clearInterval(entry.poll);
+  autoPushWatchers.delete(cwd);
+}
+
+/** Cheap fingerprint of the workspace tree — poll mode skips push when unchanged. */
+function workspaceFingerprint(root) {
+  const parts = [];
+  const walk = (dir) => {
+    let names;
+    try { names = fs.readdirSync(dir); } catch { return; }
+    for (const name of names.sort()) {
+      if (SKIP_NAMES.has(name) || name === MANIFEST_NAME) continue;
+      const full = path.join(dir, name);
+      let st;
+      try { st = fs.statSync(full); } catch { continue; }
+      const rel = path.relative(root, full).replace(/\\/g, '/');
+      parts.push(`${rel}:${st.mtimeMs}:${st.size}:${st.isDirectory() ? 'd' : 'f'}`);
+      if (st.isDirectory()) walk(full);
+    }
+  };
+  walk(root);
+  return parts.join('|');
+}
+
+/**
+ * Watch a local workspace and debounce-push changes to Drive.
+ * Covers mkdir/touch/rm from the PTY without requiring a manual Sync click.
+ */
+function startAutoPush({ userId, projectFolderId, googleAccessToken, cwd }) {
+  const root = cwd || projectRoot(userId, projectFolderId);
+  stopAutoPush(root);
+  if (!fs.existsSync(root) || !googleAccessToken || !projectFolderId) return;
+
+  const pushOpts = { userId, projectFolderId, googleAccessToken, cwd: root };
+  let timer = null;
+  let pushing = false;
+  let pending = false;
+
+  const entry = {
+    watcher: null,
+    timer: null,
+    poll: null,
+    schedule: null,
+    quietUntil: 0,
+    lastFingerprint: workspaceFingerprint(root),
+  };
+
+  const runPush = async () => {
+    if (Date.now() < (entry.quietUntil || 0)) return;
+    if (pushing) { pending = true; return; }
+    const fp = workspaceFingerprint(root);
+    if (fp === entry.lastFingerprint) return;
+    pushing = true;
+    try {
+      // Refresh Google token so long-lived terminals don't fail after ~55m
+      const fresh = await resolveFreshGoogleToken(userId, pushOpts.googleAccessToken);
+      if (fresh) pushOpts.googleAccessToken = fresh;
+
+      const result = await pushProject(pushOpts);
+      entry.lastFingerprint = workspaceFingerprint(root);
+      if (result.created || result.updated || result.deleted || result.foldersCreated) {
+        console.log(
+          `[terminal-sync] auto-push ${root}: +${result.created} ~${result.updated} -${result.deleted} dirs:${result.foldersCreated}`
+        );
+      }
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) {
+        const fresh = await resolveFreshGoogleToken(userId, null);
+        if (fresh && fresh !== pushOpts.googleAccessToken) {
+          pushOpts.googleAccessToken = fresh;
+          try {
+            await pushProject(pushOpts);
+            entry.lastFingerprint = workspaceFingerprint(root);
+            console.log(`[terminal-sync] auto-push recovered after token refresh`);
+            return;
+          } catch (err2) {
+            console.warn(`[terminal-sync] auto-push failed after token refresh: ${err2.message}`);
+            return;
+          }
+        }
+      }
+      console.warn(`[terminal-sync] auto-push failed: ${err.message}`);
+    } finally {
+      pushing = false;
+      if (pending) {
+        pending = false;
+        timer = setTimeout(runPush, 1200);
+        entry.timer = timer;
+      }
+    }
+  };
+
+  const schedule = () => {
+    if (Date.now() < (entry.quietUntil || 0)) return;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(runPush, 3500);
+    entry.timer = timer;
+  };
+
+  entry.schedule = schedule;
+
+  try {
+    entry.watcher = fs.watch(root, { recursive: true }, (_evt, filename) => {
+      const name = filename ? String(filename).replace(/\\/g, '/') : '';
+      if (name.includes(MANIFEST_NAME)) return;
+      schedule();
+    });
+  } catch (err) {
+    console.warn(`[terminal-sync] recursive watch unavailable (${err.message}); polling for changes`);
+    entry.poll = setInterval(() => {
+      try {
+        if (workspaceFingerprint(root) !== entry.lastFingerprint) schedule();
+      } catch { /* ignore */ }
+    }, 5000);
+  }
+
+  autoPushWatchers.set(root, entry);
+  // Quiet startup — first push after a real local change (or manual Sync).
+  entry.timer = timer;
+}
+
+/**
+ * After a Drive→disk pull, suppress auto-push briefly and accept the new
+ * fingerprint so pull writes don't bounce stale disk content back to Drive.
+ */
+function quietAutoPushAfterPull(cwd, ms = 6000) {
+  if (!cwd) return;
+  const entry = autoPushWatchers.get(cwd);
+  if (!entry) return;
+  try {
+    entry.lastFingerprint = workspaceFingerprint(cwd);
+  } catch { /* ignore */ }
+  entry.quietUntil = Date.now() + ms;
+  if (entry.timer) {
+    clearTimeout(entry.timer);
+    entry.timer = null;
+  }
+}
+
+/**
+ * Remove local files that no longer exist on Drive (after an IDE/Drive delete).
+ * Keeps the PTY workspace consistent so auto-push won't resurrect deleted files.
+ */
+function pruneLocalAgainstManifest(root, keepFiles, keepFolders) {
+  if (!fs.existsSync(root)) return { pruned: 0 };
+  let pruned = 0;
+
+  const walk = (dir) => {
+    for (const name of fs.readdirSync(dir)) {
+      if (SKIP_NAMES.has(name)) continue;
+      const full = path.join(dir, name);
+      const rel = path.relative(root, full).replace(/\\/g, '/');
+      let st;
+      try { st = fs.statSync(full); } catch { continue; }
+      if (st.isDirectory()) {
+        walk(full);
+        if (!keepFolders.has(rel) && rel !== '') {
+          try {
+            // Only remove if empty after child prune
+            if (fs.readdirSync(full).filter((n) => !SKIP_NAMES.has(n)).length === 0) {
+              fs.rmdirSync(full);
+              pruned += 1;
+            }
+          } catch { /* ignore */ }
+        }
+      } else if (st.isFile() && !keepFiles.has(rel)) {
+        try {
+          fs.unlinkSync(full);
+          pruned += 1;
+        } catch { /* ignore */ }
+      }
+    }
+  };
+  walk(root);
+  return { pruned };
 }
 
 module.exports = {
@@ -469,4 +960,10 @@ module.exports = {
   pushProject,
   sanitizeId,
   ensureWorkspaceRoot,
+  startAutoPush,
+  stopAutoPush,
+  quietAutoPushAfterPull,
+  pruneLocalAgainstManifest,
+  resolveFreshGoogleToken,
+  _setDriveRequestForTests,
 };
