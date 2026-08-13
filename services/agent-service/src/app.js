@@ -31,6 +31,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'agent-service', timestamp: new Date().toISOString() });
 });
 
+app.use(require('../../../shared/utils/internalAuth').requireInternalSecret({ service: 'agent-service' }));
+
 app.use('/agents', agentRoutes);
 
 app.use((req, res) => {
