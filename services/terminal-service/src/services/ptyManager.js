@@ -21,7 +21,10 @@ const sessions = new Map();
 /** @type {Map<string, Set<string>>} */
 const userSessions = new Map();
 
-const MAX_SESSIONS_PER_USER = 5;
+const MAX_SESSIONS_PER_USER = Math.max(
+  1,
+  Number.parseInt(process.env.MAX_TERMINALS_PER_USER || '5', 10) || 5,
+);
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 const ENV_ALLOWLIST = [
@@ -202,12 +205,20 @@ function listUserSessions(userId) {
   }).filter(Boolean);
 }
 
-function cleanupIdleSessions() {
+function listIdleSessions() {
   const now = Date.now();
+  const idle = [];
   for (const [terminalId, session] of sessions) {
     if (now - session.lastActivity > IDLE_TIMEOUT_MS) {
-      destroySession(terminalId);
+      idle.push({ ...session, terminalId });
     }
+  }
+  return idle;
+}
+
+function cleanupIdleSessions() {
+  for (const session of listIdleSessions()) {
+    destroySession(session.terminalId);
   }
 }
 
@@ -237,6 +248,7 @@ module.exports = {
   resizeSession,
   destroySession,
   listUserSessions,
+  listIdleSessions,
   cleanupIdleSessions,
   destroyAll,
   getStats,
