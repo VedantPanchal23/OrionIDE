@@ -1,59 +1,75 @@
-/**
- * Orion IDE — App root
- */
-
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { ThemeProvider } from './context/ThemeContext';
-import { ToastProvider } from './context/ToastContext';
-import ErrorBoundary from './components/ui/ErrorBoundary';
-import { Spinner } from './components/ui/primitives';
+import { Navigate, Route, Routes } from 'react-router-dom';
+import { useAuth } from './context/AuthContext';
 import LoginPage from './pages/LoginPage';
 import AuthSuccess from './pages/AuthSuccess';
-import IDEPage from './pages/IDEPage';
+import ProjectPicker from './pages/ProjectPicker';
+import IdePage from './pages/IdePage';
+import BillingPage from './pages/BillingPage';
+import { Spinner } from './components/ui/primitives';
 
-function BootScreen({ label = 'Loading Orion…' }) {
-  return (
-    <div className="boot-screen">
-      <Spinner />
-      <p>{label}</p>
-    </div>
-  );
+function Protected({ children }) {
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="login-page">
+        <Spinner size={28} />
+      </div>
+    );
+  }
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return children;
 }
 
-function ProtectedRoute({ children }) {
-  const { user, loading } = useAuth();
-  if (loading) return <BootScreen />;
-  if (!user) return <Navigate to="/login" replace />;
+function PublicOnly({ children }) {
+  const { isAuthenticated, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="login-page">
+        <Spinner size={28} />
+      </div>
+    );
+  }
+  if (isAuthenticated) return <Navigate to="/projects" replace />;
   return children;
 }
 
 export default function App() {
   return (
-    <ErrorBoundary>
-      <ThemeProvider>
-        <ToastProvider>
-          <BrowserRouter>
-            <AuthProvider>
-              <Routes>
-                <Route path="/login" element={<LoginPage />} />
-                <Route path="/auth/success" element={<AuthSuccess />} />
-                <Route
-                  path="/ide"
-                  element={(
-                    <ProtectedRoute>
-                      <IDEPage />
-                    </ProtectedRoute>
-                  )}
-                />
-                <Route path="/" element={<Navigate to="/ide" replace />} />
-                <Route path="/auth/callback" element={<Navigate to="/login" replace />} />
-                <Route path="*" element={<Navigate to="/ide" replace />} />
-              </Routes>
-            </AuthProvider>
-          </BrowserRouter>
-        </ToastProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
+    <Routes>
+      <Route
+        path="/login"
+        element={(
+          <PublicOnly>
+            <LoginPage />
+          </PublicOnly>
+        )}
+      />
+      <Route path="/auth/success" element={<AuthSuccess />} />
+      <Route
+        path="/projects"
+        element={(
+          <Protected>
+            <ProjectPicker />
+          </Protected>
+        )}
+      />
+      <Route
+        path="/ide/:projectId"
+        element={(
+          <Protected>
+            <IdePage />
+          </Protected>
+        )}
+      />
+      <Route
+        path="/billing"
+        element={(
+          <Protected>
+            <BillingPage />
+          </Protected>
+        )}
+      />
+      <Route path="*" element={<Navigate to="/projects" replace />} />
+    </Routes>
   );
 }
