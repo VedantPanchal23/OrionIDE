@@ -11,12 +11,19 @@ const { createLogger } = require('../../../../shared/utils/logger');
 const logger = createLogger('agent-service');
 
 let groqClient = null;
+const clientsByKey = new Map();
 
-const createClient = () => {
-  if (!groqClient) {
-    groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const createClient = (apiKey) => {
+  const key = apiKey || process.env.GROQ_API_KEY;
+  if (!key) {
+    throw Object.assign(new Error('No Groq API key configured'), { code: 'LLM_MISSING_KEY' });
   }
-  return groqClient;
+  if (!apiKey) {
+    if (!groqClient) groqClient = new Groq({ apiKey: key });
+    return groqClient;
+  }
+  if (!clientsByKey.has(key)) clientsByKey.set(key, new Groq({ apiKey: key }));
+  return clientsByKey.get(key);
 };
 
 /**
@@ -24,11 +31,11 @@ const createClient = () => {
  *
  * @param {string} model — 'llama-3.3-70b-versatile' or 'llama-3.1-8b-instant'
  * @param {Array<{role: string, content: string}>} messages
- * @param {object} [options] — { temperature, maxTokens, jsonMode }
+ * @param {object} [options] — { temperature, maxTokens, jsonMode, apiKey }
  * @returns {Promise<string>} — completion text
  */
 const chat = async (model, messages, options = {}) => {
-  const client = createClient();
+  const client = createClient(options.apiKey || null);
   const {
     temperature = 0.3,
     maxTokens = 4096,

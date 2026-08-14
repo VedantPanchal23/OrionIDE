@@ -23,7 +23,18 @@ const chat = async (model, messages, options = {}) => {
   const {
     temperature = 0.3,
     maxTokens = 4096,
+    apiKey = null,
+    baseUrl = null,
   } = options;
+
+  const key = apiKey || process.env.OPENROUTER_API_KEY;
+  if (!key) {
+    throw Object.assign(new Error('No OpenRouter API key configured'), { code: 'LLM_MISSING_KEY' });
+  }
+
+  const url = (baseUrl && String(baseUrl).trim())
+    ? `${String(baseUrl).replace(/\/$/, '')}/chat/completions`
+    : OPENROUTER_URL;
 
   const payload = {
     model,
@@ -32,17 +43,16 @@ const chat = async (model, messages, options = {}) => {
     max_tokens: maxTokens,
   };
 
+  const headers = {
+    Authorization: `Bearer ${key}`,
+    'Content-Type': 'application/json',
+    'HTTP-Referer': 'https://orionide.app',
+    'X-Title': 'Orion IDE',
+  };
+
   try {
     const response = await Promise.race([
-      axios.post(OPENROUTER_URL, payload, {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://orionide.app',
-          'X-Title': 'Orion IDE',
-        },
-        timeout: 60000,
-      }),
+      axios.post(url, payload, { headers, timeout: 60000 }),
       new Promise((_, reject) => setTimeout(() => reject(new Error('OpenRouter request timeout')), 60000)),
     ]);
 
@@ -63,15 +73,7 @@ const chat = async (model, messages, options = {}) => {
       logger.warn('OpenRouter rate limited, retrying in 2s', { model });
       await new Promise((r) => setTimeout(r, 2000));
       try {
-        const retry = await axios.post(OPENROUTER_URL, payload, {
-          headers: {
-            Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://orionide.app',
-            'X-Title': 'Orion IDE',
-          },
-          timeout: 60000,
-        });
+        const retry = await axios.post(url, payload, { headers, timeout: 60000 });
         return retry.data?.choices?.[0]?.message?.content || '';
       } catch (retryErr) {
         throw Object.assign(new Error('OpenRouter rate limit exceeded'), { code: 'LLM_RATE_LIMIT' });

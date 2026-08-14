@@ -16,6 +16,9 @@ const ImplementerAgent = require('../agents/implementerAgent');
 const ReviewerAgent = require('../agents/reviewerAgent');
 const FileAgent = require('../agents/fileAgent');
 const RunAgent = require('../agents/runAgent');
+const BaseAgent = require('../agents/baseAgent');
+const { pushEvent, streamSession } = require('./sseHub');
+const { loadProjectRules, appendRules } = require('./projectRules');
 const { createLogger } = require('../../../../shared/utils/logger');
 
 const logger = createLogger('agent-service');
@@ -30,12 +33,19 @@ const runAgent = new RunAgent();
 const MAX_REJECTIONS = 2;
 const MAX_REVIEW_RETRIES = 2;
 
-// In-memory SSE event queues per session
-const sessionStreams = new Map();
+const withSessionLlm = async (sessionId, fn) => {
+  const session = await getSession(sessionId);
+  return BaseAgent.withLlm(session?.llm || {}, fn);
+};
 
-const pushEvent = (sessionId, event) => {
-  if (!sessionStreams.has(sessionId)) sessionStreams.set(sessionId, []);
-  sessionStreams.get(sessionId).push({ ...event, timestamp: new Date().toISOString() });
+const assertNotCancelled = async (sessionId) => {
+  const session = await getSession(sessionId);
+  if (!session || session.status === 'cancelled') {
+    const err = new Error('Pipeline cancelled');
+    err.code = 'PIPELINE_CANCELLED';
+    throw err;
+  }
+  return session;
 };
 
 /**
@@ -49,8 +59,16 @@ const startPipeline = async (userId, goal, options = {}) => {
 
   setImmediate(async () => {
     try {
+      await assertNotCancelled(sessionId);
       pushEvent(sessionId, { type: 'AGENT_THINKING', step: 1, agent: 'planner' });
-      const plannerOutput = await planner.run(goal, sessionId);
+      const sess = await getSession(sessionId);
+      const rules = await loadProjectRules(
+        sess?.userId,
+        sess?.fileAgent?.projectFolderId || options.projectFolderId,
+        sess?.googleAccessToken || options.googleAccessToken,
+      );
+      const plannerOutput = await withSessionLlm(sessionId, () => planner.run(goal, sessionId, null, rules));
+      await assertNotCancelled(sessionId);
       await updateSessionMulti(sessionId, {
         'planner.output': plannerOutput,
         'projectName': plannerOutput.projectName,
@@ -59,6 +77,10 @@ const startPipeline = async (userId, goal, options = {}) => {
       pushEvent(sessionId, { type: 'AGENT_COMPLETE', step: 1, agent: 'planner', output: plannerOutput });
       pushEvent(sessionId, { type: 'WAITING_APPROVAL', step: 1, agent: 'planner' });
     } catch (err) {
+      if (err.code === 'PIPELINE_CANCELLED') {
+        pushEvent(sessionId, { type: 'PIPELINE_CANCELLED', step: 1, agent: 'planner' });
+        return;
+      }
       await updateSession(sessionId, 'status', 'failed');
       pushEvent(sessionId, { type: 'AGENT_ERROR', step: 1, agent: 'planner', error: err.message });
     }
@@ -139,17 +161,17 @@ const rejectStep = async (sessionId, step, reason) => {
       const s = await getSession(sessionId);
 
       if (step === 1) {
-        const output = await planner.run(s.goal, sessionId, reason);
+        const output = await withSessionLlm(sessionId, () => planner.run(s.goal, sessionId, reason));
         await updateSessionMulti(sessionId, { 'planner.output': output, 'status': 'waiting_approval', 'projectName': output.projectName });
         pushEvent(sessionId, { type: 'AGENT_COMPLETE', step, agent: stepName, output });
       } else if (step === 2) {
-        const output = await designer.run(s.planner.output, sessionId, reason);
+        const output = await withSessionLlm(sessionId, () => designer.run(s.planner.output, sessionId, reason));
         await updateSessionMulti(sessionId, { 'designer.output': output, 'status': 'waiting_approval' });
         pushEvent(sessionId, { type: 'AGENT_COMPLETE', step, agent: stepName, output });
       } else if (step === 3) {
         // Re-implement current file with feedback
         const idx = s.implementer.currentIndex;
-        const output = await implementer.runFile(s.designer.output, idx, s.implementer.files, sessionId, reason);
+        const output = await withSessionLlm(sessionId, () => implementer.runFile(s.designer.output, idx, s.implementer.files, sessionId, reason));
         const files = [...s.implementer.files];
         files[idx] = { path: output.filePath, code: output.code, language: output.language };
         await updateSessionMulti(sessionId, { 'implementer.files': files, 'status': 'waiting_approval' });
@@ -171,13 +193,19 @@ const rejectStep = async (sessionId, step, reason) => {
 function runDesigner(sessionId) {
   setImmediate(async () => {
     try {
+      await assertNotCancelled(sessionId);
       pushEvent(sessionId, { type: 'AGENT_THINKING', step: 2, agent: 'designer' });
       const s = await getSession(sessionId);
-      const output = await designer.run(s.planner.output, sessionId);
+      const output = await withSessionLlm(sessionId, () => designer.run(s.planner.output, sessionId));
+      await assertNotCancelled(sessionId);
       await updateSessionMulti(sessionId, { 'designer.output': output, 'status': 'waiting_approval' });
       pushEvent(sessionId, { type: 'AGENT_COMPLETE', step: 2, agent: 'designer', output });
       pushEvent(sessionId, { type: 'WAITING_APPROVAL', step: 2, agent: 'designer' });
     } catch (err) {
+      if (err.code === 'PIPELINE_CANCELLED') {
+        pushEvent(sessionId, { type: 'PIPELINE_CANCELLED', step: 2, agent: 'designer' });
+        return;
+      }
       await updateSession(sessionId, 'status', 'failed');
       pushEvent(sessionId, { type: 'AGENT_ERROR', step: 2, agent: 'designer', error: err.message });
     }
@@ -185,6 +213,7 @@ function runDesigner(sessionId) {
 }
 
 async function runImplementationLoop(sessionId) {
+  await assertNotCancelled(sessionId);
   const s = await getSession(sessionId);
   const designerOutput = s.designer.output;
   const totalFiles = designerOutput.files.length;
@@ -249,7 +278,7 @@ async function implementNextFile(sessionId) {
       // Step 3a: Implement
       pushEvent(sessionId, { type: 'AGENT_THINKING', step: 3, agent: 'implementer', file: designerOutput.files[idx].path });
       const previousFiles = s.implementer.files || [];
-      const implResult = await implementer.runFile(designerOutput, idx, previousFiles, sessionId);
+      const implResult = await withSessionLlm(sessionId, () => implementer.runFile(designerOutput, idx, previousFiles, sessionId));
 
       const files = [...(s.implementer.files || [])];
       files[idx] = { path: implResult.filePath, code: implResult.code, language: implResult.language };
@@ -259,10 +288,10 @@ async function implementNextFile(sessionId) {
 
       // Step 3b: Review
       pushEvent(sessionId, { type: 'AGENT_THINKING', step: 3, agent: 'reviewer', file: implResult.filePath });
-      let reviewResult = await reviewer.review(
+      let reviewResult = await withSessionLlm(sessionId, () => reviewer.review(
         implResult.filePath, implResult.code, implResult.language,
         designerOutput.files[idx].purpose, sessionId,
-      );
+      ));
 
       let retries = 0;
       while (!reviewResult.approved && retries < MAX_REVIEW_RETRIES) {
@@ -277,15 +306,15 @@ async function implementNextFile(sessionId) {
 
         // Re-implement with review feedback
         const feedback = reviewResult.issues.map((i) => `${i.severity}: ${i.description}`).join('; ');
-        const reImpl = await implementer.runFile(designerOutput, idx, previousFiles, sessionId, feedback);
+        const reImpl = await withSessionLlm(sessionId, () => implementer.runFile(designerOutput, idx, previousFiles, sessionId, feedback));
         files[idx] = { path: reImpl.filePath, code: reImpl.code, language: reImpl.language };
         await updateSessionMulti(sessionId, { 'implementer.files': files });
 
         // Re-review
-        reviewResult = await reviewer.review(
+        reviewResult = await withSessionLlm(sessionId, () => reviewer.review(
           reImpl.filePath, reImpl.code, reImpl.language,
           designerOutput.files[idx].purpose, sessionId,
-        );
+        ));
       }
 
       // Store review
@@ -301,7 +330,19 @@ async function implementNextFile(sessionId) {
         score: reviewResult.score,
       });
 
-      // Step 3c: Write to Google Drive
+      if (!reviewResult.approved) {
+        pushEvent(sessionId, {
+          type: 'FILE_WRITE_SKIPPED',
+          file: implResult.filePath,
+          reason: 'review_rejected',
+          score: reviewResult.score,
+        });
+        await updateSession(sessionId, 'implementer.currentIndex', idx + 1);
+        implementNextFile(sessionId);
+        return;
+      }
+
+      // Step 3c: Write to Google Drive (only after review approval)
       pushEvent(sessionId, { type: 'AGENT_THINKING', step: 3, agent: 'fileAgent', file: implResult.filePath });
       const currentSession = await getSession(sessionId);
       const writeResult = await fileAgent.writeFile(
@@ -313,6 +354,17 @@ async function implementNextFile(sessionId) {
         currentSession.googleAccessToken,
       );
 
+      if (!writeResult.success) {
+        await updateSession(sessionId, 'status', 'failed');
+        pushEvent(sessionId, {
+          type: 'AGENT_ERROR',
+          step: 3,
+          agent: 'fileAgent',
+          error: writeResult.error || `Failed to write ${implResult.filePath} to Drive`,
+        });
+        return;
+      }
+
       const written = [...(currentSession.fileAgent.written || [])];
       written.push({ filePath: implResult.filePath, fileId: writeResult.fileId });
       await updateSession(sessionId, 'fileAgent.written', written);
@@ -321,7 +373,7 @@ async function implementNextFile(sessionId) {
         type: 'FILE_WRITTEN',
         file: implResult.filePath,
         fileId: writeResult.fileId,
-        success: writeResult.success,
+        success: true,
         currentFile: idx + 1,
         totalFiles,
       });
@@ -349,9 +401,9 @@ function runRunAgent(sessionId) {
     try {
       pushEvent(sessionId, { type: 'AGENT_THINKING', step: 4, agent: 'runAgent' });
       const s = await getSession(sessionId);
-      const runConfig = await runAgent.determineCommand(
+      const runConfig = await withSessionLlm(sessionId, () => runAgent.determineCommand(
         s.goal, s.designer.output, s.implementer.files, sessionId,
-      );
+      ));
       await updateSessionMulti(sessionId, {
         'runAgent.command': runConfig,
         'status': 'waiting_approval',
@@ -368,11 +420,19 @@ function runRunAgent(sessionId) {
 function runExecution(sessionId) {
   setImmediate(async () => {
     try {
+      await assertNotCancelled(sessionId);
       pushEvent(sessionId, { type: 'AGENT_THINKING', step: 5, agent: 'execute' });
       const s = await getSession(sessionId);
       const runConfig = s.runAgent.command;
-      const mainFile = s.implementer.files.find((f) => f.path === runConfig.mainFile);
+      const wanted = String(runConfig.mainFile || '').replace(/\\/g, '/');
+      const mainFile = (s.implementer?.files || []).find((f) => {
+        const p = String(f.path || '').replace(/\\/g, '/');
+        return p === wanted || p.endsWith(`/${wanted}`) || p.split('/').pop() === wanted.split('/').pop();
+      });
       const code = mainFile?.code || '';
+      if (!code) {
+        throw new Error(`No code found for main file "${wanted}"`);
+      }
 
       const result = await runAgent.execute(s.userId, runConfig, code, sessionId);
 
@@ -401,7 +461,7 @@ function runExecution(sessionId) {
       await updateSessionMulti(sessionId, {
         'runAgent.result': result,
         'currentStep': 6,
-        'status': 'complete',
+        'status': 'completed',
       });
 
       pushEvent(sessionId, {
@@ -411,6 +471,10 @@ function runExecution(sessionId) {
         projectName: s.projectName,
       });
     } catch (err) {
+      if (err.code === 'PIPELINE_CANCELLED') {
+        pushEvent(sessionId, { type: 'PIPELINE_CANCELLED', step: 5, agent: 'execute' });
+        return;
+      }
       await updateSessionMulti(sessionId, {
         'status': 'failed',
         'currentStep': 6,
@@ -422,37 +486,25 @@ function runExecution(sessionId) {
 }
 
 /**
- * Stream SSE events to a response.
+ * Cancel a running / waiting pipeline. In-flight LLM steps check status and bail.
  */
-const streamSession = (res, sessionId) => {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
+const cancelPipeline = async (sessionId) => {
+  const session = await getSession(sessionId);
+  if (!session) throw Object.assign(new Error('Session not found'), { code: 'PIPELINE_NOT_FOUND', status: 404 });
+  if (['completed', 'complete', 'cancelled', 'failed', 'rejected'].includes(session.status)) {
+    return session;
+  }
+  const updated = await updateSessionMulti(sessionId, {
+    status: 'cancelled',
+    cancelledAt: new Date().toISOString(),
   });
-  res.flushHeaders();
-
-  const events = sessionStreams.get(sessionId) || [];
-  sessionStreams.set(sessionId, events);
-  let sentCount = 0;
-  let closed = false;
-
-  const interval = setInterval(() => {
-    if (closed) return;
-    res.write(': heartbeat\n\n');
-    while (sentCount < events.length) {
-      const evt = events[sentCount];
-      res.write(`event: ${evt.type}\ndata: ${JSON.stringify(evt)}\n\n`);
-      sentCount++;
-    }
-  }, 500);
-
-  res.on('close', () => { closed = true; clearInterval(interval); });
-
-  setTimeout(() => {
-    if (!closed) { res.end(); closed = true; clearInterval(interval); }
-  }, 300000);
+  pushEvent(sessionId, { type: 'PIPELINE_CANCELLED', step: session.currentStep, agent: 'pipeline' });
+  return updated;
 };
 
-module.exports = { startPipeline, approveStep, rejectStep, streamSession };
+/**
+ * Stream SSE events to a response.
+ */
+const streamSessionExport = streamSession;
+
+module.exports = { startPipeline, approveStep, rejectStep, cancelPipeline, streamSession: streamSessionExport };
