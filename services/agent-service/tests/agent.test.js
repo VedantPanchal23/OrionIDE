@@ -272,6 +272,7 @@ describe('Agent Routes', () => {
 
     expect(res.body.data.sessionId).toBeDefined();
     expect(res.body.data.session.currentStep).toBe(1);
+    expect(res.body.data.session.googleAccessToken).toBeUndefined();
   });
 
   test('POST /agents/pipeline/start requires goal', async () => {
@@ -291,6 +292,37 @@ describe('Agent Routes', () => {
       .get('/agents/pipeline/unknown')
       .set('X-User-Id', 'user-1')
       .expect(404);
+  });
+
+  test('POST /agents/pipeline/:id/cancel marks cancelled', async () => {
+    mockGroqChat.mockResolvedValue(JSON.stringify({
+      projectName: 'X', description: 'x', techStack: ['Python'],
+      fileStructure: [{ path: 'a.py', purpose: 'entry' }],
+      buildOrder: ['a.py'], estimatedFiles: 1,
+    }));
+
+    const start = await request(app)
+      .post('/agents/pipeline/start')
+      .set('X-User-Id', 'user-1')
+      .set('X-Google-Access-Token', 'ya29.test-google-token')
+      .send({ goal: 'cancel me' })
+      .expect(201);
+
+    const { sessionId } = start.body.data;
+    const cancel = await request(app)
+      .post(`/agents/pipeline/${sessionId}/cancel`)
+      .set('X-User-Id', 'user-1')
+      .expect(200);
+
+    expect(cancel.body.data.status).toBe('cancelled');
+  });
+
+  test('POST /agents/llm/probe requires apiKey', async () => {
+    await request(app)
+      .post('/agents/llm/probe')
+      .set('X-User-Id', 'user-1')
+      .send({ provider: 'groq' })
+      .expect(400);
   });
 
   test('GET /health returns ok', async () => {
