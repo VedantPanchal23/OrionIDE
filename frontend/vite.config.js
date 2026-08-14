@@ -1,60 +1,55 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-// https://vite.dev/config/
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 export default defineConfig({
   plugins: [react()],
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: './src/test/setup.js',
-    css: false,
-    include: ['src/**/*.{test,spec}.{js,jsx}'],
-    exclude: ['node_modules', 'e2e', 'dist'],
+  resolve: {
+    alias: {
+      // y-monaco imports this deep path; pin it for Rolldown
+      'monaco-editor/esm/vs/editor/editor.api.js': path.resolve(
+        __dirname,
+        'node_modules/monaco-editor/esm/vs/editor/editor.api.js',
+      ),
+    },
   },
   server: {
+    host: '0.0.0.0',
     port: 3010,
     proxy: {
-      '/api': {
-        target: 'http://localhost:3000',
+      // Prefer dedicated WS proxy first so Vite does not corrupt terminal frames.
+      '/api/terminal/ws': {
+        target: process.env.API_PROXY_TARGET || 'http://localhost:3000',
         changeOrigin: true,
         ws: true,
-        // Avoid buffering upgrades; required for terminal PTY
-        configure: (proxy) => {
-          proxy.on('proxyReqWs', (_proxyReq, _req, socket) => {
-            socket.on('error', () => {});
-          });
-        },
+        rewrite: (path) => path,
+      },
+      '/api/lsp/ws': {
+        target: process.env.API_PROXY_TARGET || 'http://localhost:3000',
+        changeOrigin: true,
+        ws: true,
+        rewrite: (path) => path,
+      },
+      '/api': {
+        // Docker: API_PROXY_TARGET=http://api-gateway:3000
+        target: process.env.API_PROXY_TARGET || 'http://localhost:3000',
+        changeOrigin: true,
+        ws: true,
       },
     },
   },
   build: {
-    chunkSizeWarningLimit: 600,
-    rollupOptions: {
-      output: {
-        manualChunks: (id) => {
-          // React core — tiny, always needed first
-          if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
-            return 'react-core';
-          }
-          // Monaco Editor — largest chunk (~400 kB); lazy-loaded on editor open
-          if (id.includes('node_modules/@monaco-editor') || id.includes('node_modules/monaco-editor')) {
-            return 'monaco-editor';
-          }
-          // xterm.js — only needed when terminal tab is opened
-          if (id.includes('node_modules/@xterm') || id.includes('node_modules/xterm')) {
-            return 'xterm';
-          }
-          // Lucide icons — tree-shaken but still non-trivial
-          if (id.includes('node_modules/lucide-react')) {
-            return 'lucide';
-          }
-          // All other node_modules go into a general vendor chunk
-          if (id.includes('node_modules/')) {
-            return 'vendor';
-          }
-        },
-      },
-    },
+    target: ['es2020', 'chrome90', 'firefox90', 'safari15', 'edge90'],
+    chunkSizeWarningLimit: 1600,
+    cssTarget: ['chrome90', 'firefox90', 'safari15', 'edge90'],
   },
-})
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.js'],
+    globals: false,
+    exclude: ['**/node_modules/**', '**/e2e/**', '**/dist/**'],
+  },
+});
