@@ -1,113 +1,46 @@
-/**
- * Orion IDE — Notification Service (Frontend)
- *
- * SSE client with auto-reconnect and typed event handlers.
- * Uses relative URLs — CRA proxy handles /api → gateway in dev.
- */
-
-let eventSource = null;
-const handlers = new Map(); // Map<eventType, Set<handler>>
-let reconnectAttempts = 0;
-let reconnectTimer = null;
+import { getAccessToken } from './api';
 
 /**
- * Connect to the SSE notification stream.
- * @param {string} token — JWT access token
+ * Subscribe to gateway notification SSE.
+ * Returns an unsubscribe function.
  */
-export const connect = (token) => {
-  if (eventSource) disconnect();
+export function subscribeNotifications({ onEvent, onError } = {}) {
+  const token = getAccessToken() || '';
+  const url = `/api/notifications/stream?token=${encodeURIComponent(token)}`;
+  const es = new EventSource(url);
 
-  const url = `/api/notifications/stream?token=${encodeURIComponent(token || '')}`;
-  eventSource = new EventSource(url, { withCredentials: true });
-  reconnectAttempts = 0;
-
-  eventSource.addEventListener('connected', (e) => {
-    reconnectAttempts = 0;
-    emit('connected', JSON.parse(e.data));
-  });
-
-  // Listen for all typed events
-  eventSource.onmessage = (e) => {
+  const forward = (type) => (e) => {
     try {
-      const data = JSON.parse(e.data);
-      emit(data.type, data);
+      const data = e.data ? JSON.parse(e.data) : {};
+      onEvent?.({ type: type || data.type || 'message', ...data });
     } catch {
-      // Ignore malformed
+      onEvent?.({ type: type || 'message', raw: e.data });
     }
   };
 
-  // Hook into typed events
-  const knownEvents = [
-    'DRIVE_FILE_SAVED', 'DRIVE_FILE_CREATED', 'DRIVE_FILE_DELETED',
-    'EXECUTION_COMPLETE', 'EXECUTION_FAILED',
-    'AGENT_STATUS_CHANGE', 'PIPELINE_COMPLETE',
-  ];
-  knownEvents.forEach((type) => {
-    eventSource.addEventListener(type, (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        emit(type, data);
-      } catch {
-        emit(type, { raw: e.data });
-      }
-    });
+  [
+    'connected',
+    'DRIVE_FILE_CREATED',
+    'DRIVE_FILE_UPDATED',
+    'DRIVE_FILE_DELETED',
+    'DRIVE_FILE_RENAMED',
+    'EXECUTION_STARTED',
+    'EXECUTION_COMPLETE',
+    'EXECUTION_FAILED',
+    'PIPELINE_COMPLETE',
+    'PIPELINE_FAILED',
+    'AGENT_ERROR',
+    'message',
+  ].forEach((type) => {
+    es.addEventListener(type, forward(type));
   });
 
-  eventSource.onerror = () => {
-    eventSource.close();
-    eventSource = null;
-    scheduleReconnect(token);
+  es.onmessage = forward('message');
+  es.onerror = () => {
+    onError?.(new Error('notifications_stream_closed'));
   };
-};
 
-/**
- * Disconnect from the SSE stream.
- */
-export const disconnect = () => {
-  if (reconnectTimer) {
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-  }
-  if (eventSource) {
-    eventSource.close();
-    eventSource = null;
-  }
-  reconnectAttempts = 0;
-};
-
-/**
- * Register a handler for a specific event type.
- */
-export const on = (eventType, handler) => {
-  if (!handlers.has(eventType)) handlers.set(eventType, new Set());
-  handlers.get(eventType).add(handler);
-};
-
-/**
- * Remove a handler for a specific event type.
- */
-export const off = (eventType, handler) => {
-  handlers.get(eventType)?.delete(handler);
-};
-
-/**
- * Emit an event to registered handlers.
- */
-const emit = (eventType, data) => {
-  handlers.get(eventType)?.forEach((h) => {
-    try { h(data); } catch { /* handler error */ }
-  });
-};
-
-/**
- * Auto-reconnect with exponential backoff (max 30s).
- */
-const scheduleReconnect = (token) => {
-  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-  reconnectAttempts++;
-  reconnectTimer = setTimeout(() => connect(token), delay);
-};
-
-export const isConnected = () => eventSource?.readyState === EventSource.OPEN;
-
-export const notificationService = { connect, disconnect, on, off, isConnected };
+  return () => {
+    es.close();
+  };
+}

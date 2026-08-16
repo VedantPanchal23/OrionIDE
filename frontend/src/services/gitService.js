@@ -1,38 +1,60 @@
-/**
- * Git API client — /api/git → terminal-service
- */
-
 import api from './api';
 
-export async function gitStatus(projectId) {
-  const res = await api.get('/git/status', { params: { projectId } });
-  return res.data?.data || res.data;
-}
+export const getStatus = (projectId) =>
+  api.get('/git/status', { params: { projectId } });
 
-export async function gitCommit(projectId, message, files = []) {
-  const res = await api.post('/git/commit', { projectId, message, files });
-  return res.data?.data || res.data;
-}
+export const getLog = (projectId, limit = 20) =>
+  api.get('/git/log', { params: { projectId, limit } });
 
-export async function gitStage(projectId, files = []) {
-  const res = await api.post('/git/stage', { projectId, files });
-  return res.data?.data || res.data;
-}
+export const getBranches = (projectId) =>
+  api.get('/git/branches', { params: { projectId } });
 
-export async function gitUnstage(projectId, files = []) {
-  const res = await api.post('/git/unstage', { projectId, files });
-  return res.data?.data || res.data;
-}
+export const stage = (projectId, files) =>
+  api.post('/git/stage', { projectId, files });
 
-export async function gitInit(projectId) {
-  const res = await api.post('/git/init', { projectId });
-  return res.data?.data || res.data;
-}
+export const unstage = (projectId, files) =>
+  api.post('/git/unstage', { projectId, files });
 
-export const gitService = {
-  status: gitStatus,
-  commit: gitCommit,
-  stage: gitStage,
-  unstage: gitUnstage,
-  init: gitInit,
+export const commit = (projectId, message, files) =>
+  api.post('/git/commit', { projectId, message, files });
+
+export const pull = (projectId) =>
+  api.post('/git/pull', { projectId });
+
+export const push = (projectId) =>
+  api.post('/git/push', { projectId });
+
+export const checkout = (projectId, branch, create = false) =>
+  api.post('/git/checkout', { projectId, branch, create: Boolean(create) });
+
+export const listRemotes = (projectId) =>
+  api.get('/git/remotes', { params: { projectId } });
+
+export const setRemote = (projectId, { name = 'origin', url }) =>
+  api.put('/git/remotes', { projectId, name, url });
+
+export const cloneRemote = (projectId, { url, branch }) =>
+  api.post('/git/clone', { projectId, url, branch: branch || undefined });
+
+export const getDiff = (projectId, filePath) =>
+  api.get('/git/diff', { params: { projectId, path: filePath } });
+
+export const listConflicts = (projectId) =>
+  api.get('/git/conflicts', { params: { projectId } });
+
+export const resolveConflict = (projectId, path, choice) =>
+  api.post('/git/conflicts/resolve', { projectId, path, choice });
+
+export const abortMerge = (projectId) =>
+  api.post('/git/merge/abort', { projectId });
+
+export const listPullRequests = (projectId, limit = 20) =>
+  api.get('/git/pull-requests', { params: { projectId, limit } });
+
+export const checkoutPullRequest = (projectId, number) =>
+  api.post('/git/pull-requests/checkout', { projectId, number });
+
+export const stageAll = async (projectId, paths) => {
+  if (!paths?.length) return null;
+  return stage(projectId, paths);
 };

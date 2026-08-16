@@ -1,63 +1,50 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { exchangeAuthCode, exchangeAuthCodeOnce, loginWithGoogle } from './authService';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('./api', () => {
+  const api = {
+    post: vi.fn(),
+    get: vi.fn(),
+  };
+  return {
+    default: api,
+    setAccessToken: vi.fn(),
+    getAccessToken: vi.fn(),
+  };
+});
+
+import api, { setAccessToken } from './api';
+import {
+  exchangeAuthCode, fetchMe, logout, refreshAccessToken,
+} from './authService';
 
 describe('authService', () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
-    sessionStorage.clear();
+    vi.clearAllMocks();
   });
 
-  it('exchangeAuthCode posts code and returns accessToken', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: { accessToken: 'jwt-123' } }),
-    }));
-
-    const token = await exchangeAuthCode('one-time-code');
-    expect(token).toBe('jwt-123');
-    expect(fetch).toHaveBeenCalledWith('/api/auth/exchange', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: 'one-time-code' }),
-    });
+  it('exchangeAuthCode stores access token', async () => {
+    api.post.mockResolvedValue({ data: { data: { accessToken: 'tok-1' } } });
+    const data = await exchangeAuthCode('code-abc');
+    expect(api.post).toHaveBeenCalledWith('/auth/exchange', { code: 'code-abc' });
+    expect(setAccessToken).toHaveBeenCalledWith('tok-1');
+    expect(data.accessToken).toBe('tok-1');
   });
 
-  it('exchangeAuthCode throws on API failure', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: false,
-      json: async () => ({ error: { message: 'Auth code is invalid' } }),
-    }));
-
-    await expect(exchangeAuthCode('bad')).rejects.toThrow('Auth code is invalid');
+  it('refreshAccessToken returns token', async () => {
+    api.post.mockResolvedValue({ data: { data: { accessToken: 'tok-2' } } });
+    await expect(refreshAccessToken()).resolves.toBe('tok-2');
   });
 
-  it('exchangeAuthCodeOnce dedupes concurrent calls for the same code', async () => {
-    let resolveFetch;
-    const fetchPromise = new Promise((resolve) => { resolveFetch = resolve; });
-    const fetchMock = vi.fn().mockReturnValue(fetchPromise);
-    vi.stubGlobal('fetch', fetchMock);
-
-    const p1 = exchangeAuthCodeOnce('same-code');
-    const p2 = exchangeAuthCodeOnce('same-code');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-
-    resolveFetch({
-      ok: true,
-      json: async () => ({ data: { accessToken: 'jwt-once' } }),
-    });
-
-    await expect(Promise.all([p1, p2])).resolves.toEqual(['jwt-once', 'jwt-once']);
-    expect(sessionStorage.getItem('orion_access_token')).toBe('jwt-once');
+  it('fetchMe returns profile payload', async () => {
+    api.get.mockResolvedValue({ data: { data: { id: 'u1', email: 'a@b.c', planId: 'free' } } });
+    const me = await fetchMe();
+    expect(api.get).toHaveBeenCalledWith('/auth/me');
+    expect(me.email).toBe('a@b.c');
   });
 
-  it('loginWithGoogle redirects to Google OAuth', () => {
-    Object.defineProperty(window, 'location', {
-      configurable: true,
-      value: { href: '' },
-      writable: true,
-    });
-    loginWithGoogle();
-    expect(window.location.href).toBe('/api/auth/google');
+  it('logout clears token even if request fails', async () => {
+    api.post.mockRejectedValue(new Error('network'));
+    await expect(logout()).rejects.toThrow('network');
+    expect(setAccessToken).toHaveBeenCalledWith(null);
   });
 });
