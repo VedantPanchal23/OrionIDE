@@ -1,83 +1,139 @@
-/**
- * Orion IDE — command palette (Ctrl+K)
- */
-
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search } from 'lucide-react';
+import { FileIcon } from '../../utils/fileIcons';
+import { formatShortcut } from '../../utils/platform';
 
-export default function CommandPalette({ open, onClose, commands }) {
+/**
+ * Unified command palette / quick-open overlay.
+ * mode: 'commands' | 'files'
+ */
+export default function CommandPalette({
+  open,
+  mode = 'commands',
+  commands = [],
+  files = [],
+  onClose,
+  onRunCommand,
+  onOpenFile,
+}) {
   const [query, setQuery] = useState('');
   const [index, setIndex] = useState(0);
   const inputRef = useRef(null);
+  const listRef = useRef(null);
 
   useEffect(() => {
-    if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset search UI when the palette opens
-      setQuery('');
-      setIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 10);
-    }
-  }, [open]);
+    if (!open) return undefined;
+    setQuery('');
+    setIndex(0);
+    const t = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(t);
+  }, [open, mode]);
 
-  const filtered = useMemo(() => {
+  const items = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return commands;
-    return commands.filter((c) => c.label.toLowerCase().includes(q));
-  }, [commands, query]);
+    if (mode === 'files') {
+      const list = files.filter((f) => !q || f.name.toLowerCase().includes(q) || (f.path || '').toLowerCase().includes(q));
+      return list.slice(0, 50).map((f) => ({
+        id: f.id,
+        label: f.name,
+        detail: f.path || '',
+        kind: 'file',
+        payload: f,
+      }));
+    }
+    const list = commands.filter((c) => {
+      if (!q) return true;
+      return c.label.toLowerCase().includes(q) || (c.keywords || '').toLowerCase().includes(q);
+    });
+    return list.slice(0, 40).map((c) => ({
+      id: c.id,
+      label: c.label,
+      detail: formatShortcut(c.shortcut || ''),
+      kind: 'command',
+      payload: c,
+    }));
+  }, [mode, query, commands, files]);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- keep the highlighted row in range as results change
-  useEffect(() => setIndex(0), [query]);
+  useEffect(() => {
+    setIndex(0);
+  }, [query, mode]);
+
+  useEffect(() => {
+    if (!open || !listRef.current) return;
+    const el = listRef.current.querySelector(`[data-palette-index="${index}"]`);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [index, open, items.length]);
 
   if (!open) return null;
 
-  const runAt = (i) => {
-    const cmd = filtered[i];
-    if (cmd) {
-      onClose();
-      cmd.action();
+  const select = (item) => {
+    if (!item) return;
+    if (item.kind === 'file') onOpenFile?.(item.payload);
+    else onRunCommand?.(item.payload);
+    onClose?.();
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!items.length) return;
+      setIndex((i) => Math.min(i + 1, items.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!items.length) return;
+      select(items[index]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose?.();
     }
   };
 
   return (
-    <div className="palette-root" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="palette">
-        <div style={{ display: 'flex', alignItems: 'center', paddingLeft: 14 }}>
-          <Search size={15} color="var(--text-muted)" />
+    <div className="palette-backdrop" onMouseDown={onClose} role="presentation">
+      <div
+        className="palette"
+        role="dialog"
+        aria-modal="true"
+        aria-label={mode === 'files' ? 'Quick Open' : 'Command Palette'}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="palette-input-row">
           <input
             ref={inputRef}
             className="palette-input"
-            placeholder="Type a command…"
             value={query}
+            placeholder={mode === 'files' ? 'Search files by name…' : 'Type a command…'}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') onClose();
-              if (e.key === 'ArrowDown') { e.preventDefault(); setIndex((i) => Math.min(i + 1, filtered.length - 1)); }
-              if (e.key === 'ArrowUp') { e.preventDefault(); setIndex((i) => Math.max(i - 1, 0)); }
-              if (e.key === 'Enter') { e.preventDefault(); runAt(index); }
-            }}
+            onKeyDown={onKeyDown}
           />
+          <span className="palette-hint">
+            {mode === 'files' ? formatShortcut('Ctrl+P') : formatShortcut('Ctrl+Shift+P')}
+          </span>
         </div>
-        <div className="palette-list">
-          {filtered.length === 0 ? (
-            <div style={{ padding: '20px 12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-              No matching commands
-            </div>
-          ) : (
-            filtered.map((c, i) => (
+        <ul className="palette-list" ref={listRef}>
+          {items.length === 0 && (
+            <li className="palette-empty">
+              {query.trim() ? 'No matches' : (mode === 'files' ? 'No files loaded yet' : 'No commands')}
+            </li>
+          )}
+          {items.map((item, i) => (
+            <li key={item.id}>
               <button
-                key={c.id}
                 type="button"
+                data-palette-index={i}
                 className={`palette-item ${i === index ? 'active' : ''}`}
                 onMouseEnter={() => setIndex(i)}
-                onClick={() => runAt(i)}
+                onClick={() => select(item)}
               >
-                {c.icon}
-                <span>{c.label}</span>
-                {c.hint && <span className="hint">{c.hint}</span>}
+                {item.kind === 'file' ? <FileIcon name={item.label} size={14} /> : <span className="palette-dot" />}
+                <span className="palette-label">{item.label}</span>
+                <span className="palette-detail">{item.detail}</span>
               </button>
-            ))
-          )}
-        </div>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );

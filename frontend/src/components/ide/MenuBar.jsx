@@ -1,82 +1,70 @@
-/**
- * Orion IDE — menubar-lite (File / Edit / View / Help)
- */
-
 import { useEffect, useRef, useState } from 'react';
 
-function Menu({ label, open, onToggle, children }) {
-  return (
-    <div className={`menubar-item ${open ? 'open' : ''}`} onClick={onToggle}>
-      {label}
-      {open && (
-        <div className="menubar-dropdown" onClick={(e) => e.stopPropagation()}>
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Action({ onClick, disabled, hint, children }) {
-  return (
-    <button type="button" className="menubar-action" onClick={onClick} disabled={disabled}>
-      <span>{children}</span>
-      {hint && <span className="hint">{hint}</span>}
-    </button>
-  );
-}
-
-export default function MenuBar({
-  hasActiveFile, onNewFile, onNewFolder, onSave, onCloseFile, onBackToProjects,
-  onTogglePalette, onToggleTerminal, onToggleSidebar, onToggleDock, onToggleActivity,
-  onToggleTheme, onAbout,
-}) {
-  const [open, setOpen] = useState(null);
-  const ref = useRef(null);
+/**
+ * Dropdown menus for File / Edit / View / Run / etc.
+ * items: [{ label, shortcut?, run?, disabled?, divider? }]
+ */
+export default function MenuBar({ menus = [] }) {
+  const [openKey, setOpenKey] = useState(null);
+  const rootRef = useRef(null);
 
   useEffect(() => {
-    if (!open) return undefined;
-    const close = () => setOpen(null);
-    window.addEventListener('click', close);
-    return () => window.removeEventListener('click', close);
-  }, [open]);
-
-  const run = (fn) => { fn?.(); setOpen(null); };
+    if (!openKey) return undefined;
+    const onDoc = (e) => {
+      if (!rootRef.current?.contains(e.target)) setOpenKey(null);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOpenKey(null);
+    };
+    document.addEventListener('mousedown', onDoc);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [openKey]);
 
   return (
-    <div className="menubar" ref={ref}>
-      <Menu label="File" open={open === 'file'} onToggle={() => setOpen(open === 'file' ? null : 'file')}>
-        <Action onClick={() => run(onNewFile)} hint="">New File</Action>
-        <Action onClick={() => run(onNewFolder)} hint="">New Folder</Action>
-        <div className="menubar-sep" />
-        <Action onClick={() => run(onSave)} disabled={!hasActiveFile} hint="Ctrl S">Save</Action>
-        <Action onClick={() => run(onCloseFile)} disabled={!hasActiveFile} hint="Ctrl W">Close Editor</Action>
-        <div className="menubar-sep" />
-        <Action onClick={() => run(onBackToProjects)}>Back to Projects</Action>
-      </Menu>
-
-      <Menu label="Edit" open={open === 'edit'} onToggle={() => setOpen(open === 'edit' ? null : 'edit')}>
-        <Action onClick={() => run(onTogglePalette)} hint="Ctrl K">Command Palette</Action>
-        <Action onClick={() => run(onToggleTerminal)} hint="Ctrl `">Toggle Terminal</Action>
-      </Menu>
-
-      <Menu label="View" open={open === 'view'} onToggle={() => setOpen(open === 'view' ? null : 'view')}>
-        <Action onClick={() => run(onToggleSidebar)} hint="Ctrl B">Toggle Sidebar</Action>
-        <Action onClick={() => run(onToggleDock)}>Toggle Panel</Action>
-        <div className="menubar-sep" />
-        <Action onClick={() => run(() => onToggleActivity('explorer'))}>Explorer</Action>
-        <Action onClick={() => run(() => onToggleActivity('search'))}>Search</Action>
-        <Action onClick={() => run(() => onToggleActivity('git'))}>Source Control</Action>
-        <Action onClick={() => run(() => onToggleActivity('agents'))}>Agents</Action>
-        <Action onClick={() => run(() => onToggleActivity('run'))}>Run</Action>
-        <Action onClick={() => run(() => onToggleActivity('settings'))}>Settings</Action>
-        <div className="menubar-sep" />
-        <Action onClick={() => run(onToggleTheme)}>Toggle Theme</Action>
-      </Menu>
-
-      <Menu label="Help" open={open === 'help'} onToggle={() => setOpen(open === 'help' ? null : 'help')}>
-        <Action onClick={() => run(onAbout)}>About Orion IDE</Action>
-      </Menu>
-    </div>
+    <nav className="menu-links" aria-label="Menus" ref={rootRef}>
+      {menus.map((menu) => (
+        <div key={menu.key} className={`menu-item ${openKey === menu.key ? 'open' : ''}`}>
+          <button
+            type="button"
+            className="menu-trigger"
+            aria-haspopup="menu"
+            aria-expanded={openKey === menu.key}
+            onClick={() => setOpenKey((k) => (k === menu.key ? null : menu.key))}
+            onMouseEnter={() => { if (openKey) setOpenKey(menu.key); }}
+          >
+            {menu.label}
+          </button>
+          {openKey === menu.key && (
+            <ul className="menu-dropdown" role="menu">
+              {menu.items.map((it, i) => {
+                if (it.divider) {
+                  return <li key={`d-${i}`} className="menu-divider" role="separator" />;
+                }
+                return (
+                  <li key={it.id || it.label} role="none">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      disabled={it.disabled}
+                      onClick={() => {
+                        setOpenKey(null);
+                        it.run?.();
+                      }}
+                    >
+                      <span>{it.label}</span>
+                      {it.shortcut && <kbd>{it.shortcut}</kbd>}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      ))}
+    </nav>
   );
 }
