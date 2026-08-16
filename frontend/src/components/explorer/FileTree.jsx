@@ -1,316 +1,428 @@
-/**
- * Orion IDE — Explorer file tree
- */
-
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState,
-} from 'react';
-import {
-  ChevronRight, ChevronDown, Folder, FolderOpen, File, FileCode,
-  FilePlus, FolderPlus, RefreshCw, Trash2, Pencil,
+  ChevronDown, ChevronRight, FilePlus, FolderPlus, MoreHorizontal, Pencil, RefreshCw, Trash2,
 } from 'lucide-react';
-import { useFileTree } from '../../hooks/useFileTree';
+import { useFileTreeContext } from '../../context/FileTreeContext';
 import { useEditor } from '../../context/EditorContext';
 import { useToast } from '../../context/ToastContext';
-import { getLanguageAbbr } from '../../utils/languageMap';
-import { IconButton, Spinner, EmptyState } from '../ui/primitives';
+import { FileIcon, FolderIcon } from '../../utils/fileIcons';
+import { IconButton, Spinner } from '../ui/primitives';
 import ConfirmModal from '../ui/ConfirmModal';
+import { useGitDecorations, gitGlyphForNode, gitGlyphClass } from '../../hooks/useGitDecorations';
 
-const INDENT = 16;
+const INDENT = 12;
 
-function fileIcon(name) {
-  const abbr = getLanguageAbbr(name);
-  return abbr && abbr !== 'TXT' ? <FileCode size={14} /> : <File size={14} />;
+function flattenVisible(id, tree, out = []) {
+  out.push(id);
+  const node = tree.nodesById[id];
+  if (node?.isFolder && tree.expandedIds.has(id)) {
+    (tree.childrenByParent[id] || []).forEach((cid) => flattenVisible(cid, tree, out));
+  }
+  return out;
 }
 
-function friendlyError(err, fallback) {
-  return err?.response?.data?.error?.message || err?.message || fallback;
-}
-
-const FileTree = forwardRef(function FileTree({ projectId, projectName }, ref) {
-  const tree = useFileTree(projectId, projectName);
-  const { openFile } = useEditor();
-  const toast = useToast();
-  const [menu, setMenu] = useState(null); // { x, y, targetId }
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const containerRef = useRef(null);
-
-  useEffect(() => {
-    if (!menu) return undefined;
-    const close = () => setMenu(null);
-    window.addEventListener('click', close);
-    window.addEventListener('resize', close);
-    return () => {
-      window.removeEventListener('click', close);
-      window.removeEventListener('resize', close);
-    };
-  }, [menu]);
-
-  const handleSelect = useCallback((node) => {
-    tree.setSelectedId(node.id);
-    if (node.isFolder) {
-      tree.toggleExpand(node.id);
-    } else {
-      openFile({ id: node.id, name: node.name, parentId: node.parentId }).catch((err) => {
-        toast.error(friendlyError(err, 'Failed to open file'));
-      });
-    }
-  }, [tree, openFile, toast]);
-
-  const beginCreate = useCallback((type, parentIdOverride) => {
-    const parentId = parentIdOverride || tree.resolveParentForNew();
-    tree.expand(parentId);
-    tree.setSelectedId(parentId);
-    tree.setEditingId(`new:${parentId}:${type}`);
-    setMenu(null);
-  }, [tree]);
-
-  useImperativeHandle(ref, () => ({
-    newFile: () => beginCreate('file'),
-    newFolder: () => beginCreate('folder'),
-    refresh: () => tree.refreshFolder(tree.resolveParentForNew()),
-  }), [beginCreate, tree]);
-
-  const submitCreate = useCallback(async (parentId, type, name) => {
-    if (!name.trim()) { tree.setEditingId(null); return; }
-    try {
-      const node = await tree.createItem(name, type, parentId);
-      tree.setEditingId(null);
-      if (!node.isFolder) {
-        openFile({ id: node.id, name: node.name, parentId: node.parentId }).catch(() => {});
-      }
-    } catch (err) {
-      toast.error(friendlyError(err, `Failed to create ${type}`));
-      if (err.code === 'DUPLICATE') return; // keep editing so the user can rename
-      tree.setEditingId(null);
-    }
-  }, [tree, toast, openFile]);
-
-  const submitRename = useCallback(async (id, name) => {
-    try {
-      await tree.renameItem(id, name);
-    } catch (err) {
-      toast.error(friendlyError(err, 'Rename failed'));
-    } finally {
-      tree.setEditingId(null);
-    }
-  }, [tree, toast]);
-
-  const confirmDelete = useCallback(async () => {
-    if (!deleteTarget) return;
-    try {
-      await tree.deleteItem(deleteTarget.id);
-      toast.success(`Deleted "${deleteTarget.name}"`);
-    } catch (err) {
-      toast.error(friendlyError(err, 'Delete failed'));
-    } finally {
-      setDeleteTarget(null);
-    }
-  }, [deleteTarget, tree, toast]);
-
-  const openMenu = useCallback((e, targetId) => {
-    e.preventDefault();
-    e.stopPropagation();
-    tree.setSelectedId(targetId);
-    setMenu({ x: e.clientX, y: e.clientY, targetId });
-  }, [tree]);
-
-  const renderInlineInput = (parentId, type, depth) => (
-    <InlineInput
-      depth={depth}
-      isFolder={type === 'folder'}
-      placeholder={type === 'folder' ? 'Folder name' : 'File name'}
-      onSubmit={(name) => submitCreate(parentId, type, name)}
-      onCancel={() => tree.setEditingId(null)}
-    />
-  );
-
-  const renderNode = (id, depth) => {
-    const node = tree.nodesById[id];
-    if (!node) return null;
-    const isExpanded = tree.expandedIds.has(id);
-    const isEditing = tree.editingId === id;
-    const isLoading = tree.loadingIds.has(id);
-    const childIds = tree.childrenByParent[id] || [];
-    const pendingNew = tree.editingId && tree.editingId.startsWith(`new:${id}:`)
-      ? tree.editingId.split(':')[2]
-      : null;
-
-    return (
-      <div key={id}>
-        <div
-          className={`tree-row ${tree.selectedId === id ? 'selected' : ''}`}
-          style={{ paddingLeft: 6 + depth * INDENT }}
-          onClick={() => (isEditing ? null : handleSelect(node))}
-          onContextMenu={(e) => openMenu(e, id)}
-          title={node.name}
-        >
-          {node.isFolder ? (
-            <span className="tree-chevron">
-              {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-            </span>
-          ) : (
-            <span className="tree-chevron" />
-          )}
-          <span className={`tree-icon ${node.isFolder ? 'folder' : ''}`}>
-            {node.isFolder
-              ? (isExpanded ? <FolderOpen size={14} /> : <Folder size={14} />)
-              : fileIcon(node.name)}
-          </span>
-          {isEditing ? (
-            <RenameInput
-              initial={node.name}
-              onSubmit={(name) => submitRename(id, name)}
-              onCancel={() => tree.setEditingId(null)}
-            />
-          ) : (
-            <span className="tree-name">{node.name}</span>
-          )}
-          {isLoading && <Spinner size={11} />}
-        </div>
-        {node.isFolder && isExpanded && (
-          <div>
-            {childIds.map((cid) => renderNode(cid, depth + 1))}
-            {pendingNew && renderInlineInput(id, pendingNew, depth + 1)}
-            {!isLoading && childIds.length === 0 && !pendingNew && (
-              <div className="tree-row" style={{ paddingLeft: 6 + (depth + 1) * INDENT, color: 'var(--text-muted)', cursor: 'default' }}>
-                <span className="tree-chevron" />
-                <span style={{ fontSize: 11 }}>Empty</span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const rootChildIds = tree.childrenByParent[projectId] || [];
-  const rootPendingNew = tree.editingId && tree.editingId.startsWith(`new:${projectId}:`)
-    ? tree.editingId.split(':')[2]
-    : null;
-  const menuNode = menu ? tree.nodesById[menu.targetId] : null;
+function TreeNode({
+  id, depth = 0, onOpen, onContext, renamingId, renameValue, setRenameValue, onRenameSubmit, onRenameCancel,
+  gitDecorations,
+}) {
+  const tree = useFileTreeContext();
+  const node = tree.nodesById[id];
+  if (!node) return null;
+  const kids = tree.childrenByParent[id] || [];
+  const expanded = tree.expandedIds.has(id);
+  const selected = tree.selectedId === id;
+  const loading = tree.loadingIds.has(id);
+  const renaming = renamingId === id;
+  const gitGlyph = gitGlyphForNode(gitDecorations, tree, node);
 
   return (
-    <div
-      ref={containerRef}
-      style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
-      onContextMenu={(e) => { if (e.target === containerRef.current) openMenu(e, projectId); }}
-    >
-      <div className="o-panel-header">
-        <span className="o-panel-title">{projectName || 'Explorer'}</span>
-        <div className="explorer-toolbar">
-          <IconButton title="New File" onClick={() => beginCreate('file')}><FilePlus size={14} /></IconButton>
-          <IconButton title="New Folder" onClick={() => beginCreate('folder')}><FolderPlus size={14} /></IconButton>
-          <IconButton title="Refresh" onClick={() => tree.refreshFolder(tree.resolveParentForNew())}><RefreshCw size={13} /></IconButton>
-        </div>
-      </div>
-      <div className="ide-sidebar-body" onClick={() => tree.setSelectedId(projectId)}>
-        {!tree.ready ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}><Spinner /></div>
-        ) : rootChildIds.length === 0 && !rootPendingNew ? (
-          <EmptyState title="No files yet" hint="Create a file to get started." />
+    <div>
+      <button
+        type="button"
+        data-tree-id={id}
+        className={[
+          'tree-row',
+          selected ? 'selected' : '',
+          node.isFolder ? 'is-folder' : 'is-file',
+          depth === 0 ? 'is-root' : '',
+          renaming ? 'renaming' : '',
+        ].filter(Boolean).join(' ')}
+        style={{ paddingLeft: 8 + depth * INDENT }}
+        onClick={() => {
+          if (renaming) return;
+          tree.setSelectedId(id);
+          if (node.isFolder) tree.toggleExpand(id);
+          else onOpen(node);
+        }}
+        onDoubleClick={() => {
+          if (renaming) return;
+          if (!node.isFolder) onOpen(node);
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          tree.setSelectedId(id);
+          onContext?.(e, node);
+        }}
+      >
+        {depth > 0 && (
+          <span className="tree-indent-guides" aria-hidden="true" style={{ left: 8 }}>
+            {Array.from({ length: depth }, (_, i) => <span key={i} />)}
+          </span>
+        )}
+        <span className={`chev ${expanded ? 'open' : ''}`} aria-hidden="true">
+          {node.isFolder
+            ? (expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />)
+            : <span className="chev-spacer" />}
+        </span>
+        <span className="tree-icon" aria-hidden="true">
+          {node.isFolder
+            ? <FolderIcon open={expanded} size={15} />
+            : <FileIcon name={node.name} size={16} />}
+        </span>
+        {renaming ? (
+          <input
+            className="tree-rename-input"
+            value={renameValue}
+            autoFocus
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') onRenameSubmit();
+              if (e.key === 'Escape') onRenameCancel();
+            }}
+            onBlur={() => onRenameSubmit()}
+          />
         ) : (
-          <>
-            {rootChildIds.map((id) => renderNode(id, 0))}
-            {rootPendingNew && renderInlineInput(projectId, rootPendingNew, 0)}
-          </>
+          <span className="tree-name" title={node.name}>{node.name}</span>
+        )}
+        {gitGlyph && (
+          <span className={`tree-git-glyph ${gitGlyphClass(gitGlyph)}`} title={`Git: ${gitGlyph}`} aria-hidden="true">
+            {gitGlyph}
+          </span>
+        )}
+        {loading && <Spinner size={11} />}
+      </button>
+      {node.isFolder && expanded && kids.map((cid) => (
+        <TreeNode
+          key={cid}
+          id={cid}
+          depth={depth + 1}
+          onOpen={onOpen}
+          onContext={onContext}
+          renamingId={renamingId}
+          renameValue={renameValue}
+          setRenameValue={setRenameValue}
+          onRenameSubmit={onRenameSubmit}
+          onRenameCancel={onRenameCancel}
+          gitDecorations={gitDecorations}
+        />
+      ))}
+    </div>
+  );
+}
+
+export default function FileTree({ projectId }) {
+  const tree = useFileTreeContext();
+  const { openFile, openToSide, closeFile, openFiles, activeFileId, focusedFile, renameOpenFile } = useEditor();
+  const toast = useToast();
+  const [prompt, setPrompt] = useState(null);
+  const [menu, setMenu] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
+  const treeRef = useRef(null);
+  const lastRevealed = useRef(null);
+  const { decorations: gitDecorations } = useGitDecorations(projectId);
+
+  const deleteMessage = useMemo(() => {
+    if (!pendingDelete) return '';
+    const parts = (tree.getPath(pendingDelete.id) || []).map((n) => n.name);
+    const rel = parts.length > 1 ? parts.slice(1).join('/') : pendingDelete.name;
+    if (pendingDelete.isFolder) {
+      return `Delete folder "${rel}" and everything inside it? This cannot be undone.`;
+    }
+    return `Delete "${rel}"? This cannot be undone.`;
+  }, [pendingDelete, tree]);
+
+  const visibleIds = useMemo(
+    () => (tree.ready ? flattenVisible(projectId, tree) : []),
+    [tree, projectId],
+  );
+
+  const activeId = focusedFile?.id || activeFileId;
+  useEffect(() => {
+    if (!activeId || !tree.ready || !tree.nodesById[activeId]) return;
+    if (lastRevealed.current === activeId) return;
+    lastRevealed.current = activeId;
+    tree.revealInTree(activeId);
+  }, [activeId, tree]);
+
+  const submitCreate = async () => {
+    if (!prompt?.name?.trim()) return;
+    try {
+      const node = await tree.createItem(prompt.name.trim(), prompt.type);
+      toast.success(`${prompt.type === 'folder' ? 'Folder' : 'File'} created`);
+      setPrompt(null);
+      if (!node.isFolder) await openFile(node);
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || err.message);
+    }
+  };
+
+  const startRename = useCallback((node) => {
+    const target = node || tree.nodesById[tree.selectedId];
+    if (!target || target.id === projectId) return;
+    setRenamingId(target.id);
+    setRenameValue(target.name);
+    tree.setSelectedId(target.id);
+  }, [tree, projectId]);
+
+  const cancelRename = () => {
+    setRenamingId(null);
+    setRenameValue('');
+  };
+
+  const submitRename = async () => {
+    if (!renamingId) return;
+    const target = tree.nodesById[renamingId];
+    const next = renameValue.trim();
+    if (!target || !next || next === target.name) {
+      cancelRename();
+      return;
+    }
+    try {
+      await tree.renameItem(renamingId, next);
+      renameOpenFile(renamingId, next);
+      toast.success('Renamed');
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || err.message);
+    } finally {
+      cancelRename();
+    }
+  };
+
+  const requestDelete = (node) => {
+    const target = node || tree.nodesById[tree.selectedId];
+    if (!target || target.id === projectId) return;
+    setPendingDelete(target);
+  };
+
+  const confirmDelete = async () => {
+    const target = pendingDelete;
+    setPendingDelete(null);
+    if (!target) return;
+    try {
+      await tree.deleteItem(target.id);
+      openFiles.forEach((f) => {
+        if (f.id === target.id) {
+          closeFile(f.id, { force: true });
+          return;
+        }
+        if (!target.isFolder) return;
+        const path = tree.getPath(f.id) || [];
+        if (path.some((n) => n.id === target.id)) {
+          closeFile(f.id, { force: true });
+        }
+      });
+      toast.success('Deleted');
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || err.message);
+    }
+  };
+
+  const onKeyDown = (e) => {
+    if (renamingId) return;
+    if (!visibleIds.length) return;
+    const idx = Math.max(0, visibleIds.indexOf(tree.selectedId));
+    const sel = tree.nodesById[tree.selectedId] || tree.nodesById[visibleIds[0]];
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = visibleIds[Math.min(visibleIds.length - 1, idx + 1)];
+      tree.setSelectedId(next);
+      requestAnimationFrame(() => {
+        document.querySelector(`[data-tree-id="${CSS.escape(next)}"]`)?.scrollIntoView({ block: 'nearest' });
+      });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const next = visibleIds[Math.max(0, idx - 1)];
+      tree.setSelectedId(next);
+      requestAnimationFrame(() => {
+        document.querySelector(`[data-tree-id="${CSS.escape(next)}"]`)?.scrollIntoView({ block: 'nearest' });
+      });
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      const next = visibleIds[0];
+      if (next) {
+        tree.setSelectedId(next);
+        requestAnimationFrame(() => {
+          document.querySelector(`[data-tree-id="${CSS.escape(next)}"]`)?.scrollIntoView({ block: 'nearest' });
+        });
+      }
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      const next = visibleIds[visibleIds.length - 1];
+      if (next) {
+        tree.setSelectedId(next);
+        requestAnimationFrame(() => {
+          document.querySelector(`[data-tree-id="${CSS.escape(next)}"]`)?.scrollIntoView({ block: 'nearest' });
+        });
+      }
+    } else if (e.key === 'ArrowRight' && sel?.isFolder) {
+      e.preventDefault();
+      if (!tree.expandedIds.has(sel.id)) tree.toggleExpand(sel.id);
+      else {
+        const kids = tree.childrenByParent[sel.id] || [];
+        if (kids[0]) tree.setSelectedId(kids[0]);
+      }
+    } else if (e.key === 'ArrowLeft' && sel) {
+      e.preventDefault();
+      if (sel.isFolder && tree.expandedIds.has(sel.id)) tree.toggleExpand(sel.id);
+      else if (sel.parentId) tree.setSelectedId(sel.parentId);
+    } else if (e.key === 'Enter' && sel) {
+      e.preventDefault();
+      if (sel.isFolder) tree.toggleExpand(sel.id);
+      else openFile(sel).catch((err) => toast.error(err.message));
+    } else if (e.key === 'F2' && sel) {
+      e.preventDefault();
+      startRename(sel);
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && sel && sel.id !== projectId && (e.metaKey || e.ctrlKey || e.key === 'Delete')) {
+      if (e.key === 'Delete') {
+        e.preventDefault();
+        requestDelete(sel);
+      }
+    }
+  };
+
+  return (
+    <div className="side-panel">
+      <div className="ide-sidebar-title sticky-title">
+        <span>Explorer</span>
+        <span className="title-actions">
+          <IconButton title="New File" onClick={() => setPrompt({ type: 'file', name: '' })}>
+            <FilePlus size={14} />
+          </IconButton>
+          <IconButton title="New Folder" onClick={() => setPrompt({ type: 'folder', name: '' })}>
+            <FolderPlus size={14} />
+          </IconButton>
+          <IconButton title="Refresh" onClick={() => tree.refreshFolder(projectId)}>
+            <RefreshCw size={14} />
+          </IconButton>
+          <IconButton title="More" onClick={(e) => setMenu({ x: e.clientX, y: e.clientY, node: tree.nodesById[tree.selectedId] })}>
+            <MoreHorizontal size={14} />
+          </IconButton>
+        </span>
+      </div>
+
+      {prompt && (
+        <div className="inline-prompt">
+          <input
+            autoFocus
+            value={prompt.name}
+            placeholder={prompt.type === 'folder' ? 'Folder name' : 'File name (e.g. main.py)'}
+            onChange={(e) => setPrompt({ ...prompt, name: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') submitCreate();
+              if (e.key === 'Escape') setPrompt(null);
+            }}
+            onBlur={() => { if (!prompt.name.trim()) setPrompt(null); }}
+          />
+        </div>
+      )}
+
+      <div
+        className="tree"
+        ref={treeRef}
+        tabIndex={0}
+        role="tree"
+        onKeyDown={onKeyDown}
+      >
+        {!tree.ready ? (
+          <div className="side-empty"><Spinner /></div>
+        ) : (
+          <TreeNode
+            id={projectId}
+            depth={0}
+            onOpen={(node) => openFile(node).catch((err) => toast.error(err.message))}
+            onContext={(e, node) => setMenu({ x: e.clientX, y: e.clientY, node })}
+            renamingId={renamingId}
+            renameValue={renameValue}
+            setRenameValue={setRenameValue}
+            onRenameSubmit={submitRename}
+            onRenameCancel={cancelRename}
+            gitDecorations={gitDecorations}
+          />
         )}
       </div>
 
       {menu && (
-        <div className="ctx-menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
-          <button type="button" className="ctx-item" onClick={() => beginCreate('file', menuNode?.isFolder ? menu.targetId : menuNode?.parentId)}>
-            <FilePlus size={13} style={{ marginRight: 8 }} /> New File
-          </button>
-          <button type="button" className="ctx-item" onClick={() => beginCreate('folder', menuNode?.isFolder ? menu.targetId : menuNode?.parentId)}>
-            <FolderPlus size={13} style={{ marginRight: 8 }} /> New Folder
-          </button>
-          {menuNode && menuNode.id !== projectId && (
-            <>
-              <div className="ctx-sep" />
-              <button type="button" className="ctx-item" onClick={() => { tree.setEditingId(menu.targetId); setMenu(null); }}>
-                <Pencil size={13} style={{ marginRight: 8 }} /> Rename
-              </button>
-              <button
-                type="button"
-                className="ctx-item"
-                style={{ color: 'var(--danger)' }}
-                onClick={() => { setDeleteTarget(menuNode); setMenu(null); }}
-              >
-                <Trash2 size={13} style={{ marginRight: 8 }} /> Delete
-              </button>
-            </>
-          )}
-        </div>
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            {
+              label: 'Open',
+              onClick: () => menu.node && !menu.node.isFolder && openFile(menu.node),
+              disabled: !menu.node || menu.node.isFolder,
+            },
+            {
+              label: 'Open to the Side',
+              onClick: () => menu.node && !menu.node.isFolder && openToSide(menu.node),
+              disabled: !menu.node || menu.node.isFolder,
+            },
+            { label: 'New File', onClick: () => setPrompt({ type: 'file', name: '' }) },
+            { label: 'New Folder', onClick: () => setPrompt({ type: 'folder', name: '' }) },
+            {
+              label: 'Rename',
+              onClick: () => startRename(menu.node),
+              disabled: !menu.node || menu.node.id === projectId,
+            },
+            {
+              label: 'Delete',
+              onClick: () => requestDelete(menu.node),
+              danger: true,
+              disabled: !menu.node || menu.node.id === projectId,
+            },
+            { label: 'Refresh', onClick: () => tree.refreshFolder(menu.node?.isFolder ? menu.node.id : projectId) },
+          ]}
+        />
       )}
 
       <ConfirmModal
-        open={Boolean(deleteTarget)}
-        title={`Delete "${deleteTarget?.name}"?`}
-        message={deleteTarget?.isFolder
-          ? 'This folder and its contents will be moved to Drive trash.'
-          : 'This file will be moved to Drive trash.'}
+        open={Boolean(pendingDelete)}
+        title={pendingDelete?.isFolder ? 'Delete folder' : 'Delete'}
+        message={deleteMessage}
         confirmLabel="Delete"
         danger
+        onCancel={() => setPendingDelete(null)}
         onConfirm={confirmDelete}
-        onCancel={() => setDeleteTarget(null)}
       />
     </div>
-  );
-});
-
-export default FileTree;
-
-function RenameInput({ initial, onSubmit, onCancel }) {
-  const ref = useRef(null);
-  const [value, setValue] = useState(initial);
-
-  useEffect(() => {
-    ref.current?.focus();
-    ref.current?.select();
-  }, []);
-
-  return (
-    <input
-      ref={ref}
-      className="tree-input"
-      value={value}
-      onClick={(e) => e.stopPropagation()}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={() => onSubmit(value)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') onSubmit(value);
-        if (e.key === 'Escape') onCancel();
-      }}
-    />
   );
 }
 
-function InlineInput({ depth, isFolder, placeholder, onSubmit, onCancel }) {
-  const ref = useRef(null);
-  const [value, setValue] = useState('');
-
-  useEffect(() => { ref.current?.focus(); }, []);
-
+function ContextMenu({ x, y, items, onClose }) {
   return (
-    <div className="tree-row" style={{ paddingLeft: 6 + depth * INDENT }}>
-      <span className="tree-chevron" />
-      <span className={`tree-icon ${isFolder ? 'folder' : ''}`}>
-        {isFolder ? <Folder size={14} /> : <File size={14} />}
-      </span>
-      <input
-        ref={ref}
-        className="tree-input"
-        placeholder={placeholder}
-        value={value}
-        onClick={(e) => e.stopPropagation()}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={() => onSubmit(value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') onSubmit(value);
-          if (e.key === 'Escape') onCancel();
-        }}
-      />
-    </div>
+    <>
+      <button type="button" className="ctx-backdrop" aria-label="Close menu" onClick={onClose} />
+      <ul className="ctx-menu" style={{ left: x, top: y }}>
+        {items.map((it) => (
+          <li key={it.label}>
+            <button
+              type="button"
+              className={`ctx-item ${it.danger ? 'danger' : ''}`}
+              disabled={it.disabled}
+              onClick={() => { onClose(); it.onClick?.(); }}
+            >
+              {it.label === 'Rename' && <Pencil size={12} />}
+              {it.label === 'Delete' && <Trash2 size={12} />}
+              {it.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
