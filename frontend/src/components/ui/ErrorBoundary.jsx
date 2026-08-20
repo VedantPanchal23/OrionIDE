@@ -1,12 +1,6 @@
-/**
- * Orion IDE — top-level error boundary
- */
+import { Component } from 'react';
 
-import React from 'react';
-import { AlertTriangle } from 'lucide-react';
-import { Button } from './primitives';
-
-export default class ErrorBoundary extends React.Component {
+export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
     this.state = { error: null };
@@ -17,28 +11,26 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    console.error('Orion IDE crashed:', error, info?.componentStack);
+    // eslint-disable-next-line no-console
+    console.error('Orion UI crash', error, info);
   }
-
-  handleReload = () => {
-    this.setState({ error: null });
-    window.location.reload();
-  };
 
   render() {
     if (this.state.error) {
       return (
-        <div className="boot-screen" style={{ gap: 18 }}>
-          <AlertTriangle size={40} color="var(--danger)" />
-          <div style={{ textAlign: 'center', maxWidth: 420 }}>
-            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 20, marginBottom: 8, color: 'var(--text)' }}>
-              Something broke
-            </h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 4 }}>
-              {this.state.error?.message || 'An unexpected error occurred.'}
-            </p>
-          </div>
-          <Button variant="primary" onClick={this.handleReload}>Reload Orion</Button>
+        <div className="error-boundary">
+          <h2>Something went wrong</h2>
+          <p className="muted">{this.state.error.message || 'Unexpected UI error'}</p>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={() => {
+              this.setState({ error: null });
+              this.props.onReset?.();
+            }}
+          >
+            Try again
+          </button>
         </div>
       );
     }
