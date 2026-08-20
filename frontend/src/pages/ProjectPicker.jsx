@@ -1,164 +1,138 @@
-/**
- * Orion IDE — Project picker
- */
-
 import { useCallback, useEffect, useState } from 'react';
-import { FolderKanban, Plus, LogOut, Clock } from 'lucide-react';
-import * as driveService from '../services/driveService';
+import { useNavigate } from 'react-router-dom';
+import { FolderKanban, LogOut, Moon, Plus, Sun } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
-import {
-  Button, IconButton, Input, Spinner, EmptyState, BrandMark,
-} from '../components/ui/primitives';
+import * as driveService from '../services/driveService';
+import { formatApiError } from '../utils/apiError';
+import { IconButton, Spinner } from '../components/ui/primitives';
+import { PROJECT_TEMPLATES } from '../templates/projectTemplates';
 
-function timeAgo(iso) {
-  if (!iso) return '';
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
-
-export default function ProjectPicker({ onSelectProject }) {
+export default function ProjectPicker() {
   const { user, logout } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const toast = useToast();
+  const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
-  const [rootFolderId, setRootFolderId] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [name, setName] = useState('');
+  const [template, setTemplate] = useState('blank');
   const [creating, setCreating] = useState(false);
-  const [newName, setNewName] = useState('');
-  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await driveService.listProjects();
-      const data = res.data?.data || {};
-      setProjects(data.projects || []);
-      setRootFolderId(data.rootFolderId || null);
+      setProjects(res.data?.data?.projects || res.data?.data || []);
     } catch (err) {
-      toast.error(err?.response?.data?.error?.message || 'Failed to load projects');
+      toast.error(formatApiError(err, 'Failed to load projects'));
     } finally {
       setLoading(false);
     }
   }, [toast]);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch project list on mount
   useEffect(() => { load(); }, [load]);
 
-  const submitCreate = async (e) => {
+  const create = async (e) => {
     e.preventDefault();
-    const name = newName.trim();
-    if (!name || !rootFolderId || busy) return;
-    const clash = projects.some((p) => p.name.toLowerCase() === name.toLowerCase());
-    if (clash) {
-      toast.error(`A project named "${name}" already exists`);
-      return;
-    }
-    setBusy(true);
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setCreating(true);
     try {
-      const res = await driveService.createFolder(rootFolderId, name);
-      const created = res.data?.data;
-      toast.success(`Created "${name}"`);
-      setCreating(false);
-      setNewName('');
-      if (created) onSelectProject(created.id, created.name || name);
+      const res = await driveService.createProject(trimmed, { template });
+      const project = res.data?.data;
+      const tpl = PROJECT_TEMPLATES.find((t) => t.id === template);
+      const hints = {
+        'vite-react': 'React project created — Terminal: npm install, then vite dev chip',
+        flask: 'Flask project created — Terminal: venv → pip install → flask run / python3 app.py',
+        express: 'Express project created — Terminal: npm install && npm start',
+        cpp: 'C++ project created — Terminal: g++ run chip or ▶ Run',
+        python: 'Python project created — ▶ Run or python3 hello.py',
+      };
+      toast.success(hints[tpl?.id] || 'Project created');
+      setName('');
+      if (project?.id) {
+        navigate(`/ide/${project.id}`, {
+          state: { projectName: project.name, template },
+        });
+      } else await load();
     } catch (err) {
-      if (err?.response?.status === 409) {
-        toast.error(err.response.data?.error?.message || 'A project with that name already exists');
-      } else {
-        toast.error(err?.response?.data?.error?.message || 'Failed to create project');
-      }
+      toast.error(formatApiError(err, 'Create failed'));
     } finally {
-      setBusy(false);
+      setCreating(false);
     }
   };
 
   return (
-    <div className="picker-screen">
-      <div className="picker-top">
-        <div className="picker-brand">
-          <BrandMark size={24} />
-          <span>Orion IDE</span>
+    <div className="picker-page">
+      <header className="picker-top">
+        <h1>
+          Orion
+          {' '}
+          <span style={{ color: 'var(--accent)' }}>projects</span>
+        </h1>
+        <div className="picker-top-actions">
+          <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{user?.email || user?.name}</span>
+          <IconButton title="Theme" onClick={toggleTheme}>
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </IconButton>
+          <IconButton title="Log out" onClick={() => logout().then(() => navigate('/login'))}>
+            <LogOut size={16} />
+          </IconButton>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {user && (
-            <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{user.name || user.email}</span>
-          )}
-          <IconButton title="Sign out" onClick={logout}><LogOut size={16} /></IconButton>
-        </div>
-      </div>
+      </header>
 
       <div className="picker-body">
-        <div className="picker-heading">
-          <div>
-            <h1>Your projects</h1>
-            <p>Folders inside your Drive’s OrionIDE workspace.</p>
-          </div>
-          <Button variant="primary" onClick={() => setCreating(true)}>
-            <Plus size={16} /> New project
-          </Button>
-        </div>
-
-        {creating && (
-          <form onSubmit={submitCreate} style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            <Input
-              autoFocus
-              placeholder="Project name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Escape') { setCreating(false); setNewName(''); } }}
-              disabled={busy}
-            />
-            <Button variant="primary" type="submit" disabled={busy || !newName.trim()}>
-              {busy ? <Spinner size={14} /> : 'Create'}
-            </Button>
-            <Button variant="ghost" type="button" onClick={() => { setCreating(false); setNewName(''); }}>
-              Cancel
-            </Button>
-          </form>
-        )}
+        <form className="create-row create-row-templates" onSubmit={create}>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="New project name"
+            aria-label="New project name"
+          />
+          <select
+            className="picker-template"
+            value={template}
+            onChange={(e) => setTemplate(e.target.value)}
+            aria-label="Project template"
+            title="Project template"
+          >
+            {PROJECT_TEMPLATES.map((t) => (
+              <option key={t.id} value={t.id}>{t.label}</option>
+            ))}
+          </select>
+          <button type="submit" className="btn btn-primary" disabled={creating || !name.trim()}>
+            {creating ? <Spinner /> : <Plus size={16} />}
+            Create
+          </button>
+        </form>
+        <p className="picker-template-hint muted">
+          {PROJECT_TEMPLATES.find((t) => t.id === template)?.description}
+        </p>
 
         {loading ? (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Spinner /></div>
+          <div className="picker-empty"><Spinner /></div>
         ) : projects.length === 0 ? (
-          <EmptyState
-            icon={<FolderKanban size={32} color="var(--text-muted)" />}
-            title="No projects yet"
-            hint="Create your first project to start coding."
-          >
-            <Button variant="primary" style={{ marginTop: 12 }} onClick={() => setCreating(true)}>
-              <Plus size={16} /> New project
-            </Button>
-          </EmptyState>
-        ) : (
-          <div className="picker-list">
-            {projects
-              .slice()
-              .sort((a, b) => new Date(b.modifiedTime || 0) - new Date(a.modifiedTime || 0))
-              .map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className="picker-row"
-                  onClick={() => onSelectProject(p.id, p.name)}
-                >
-                  <span className="picker-row-icon"><FolderKanban size={16} /></span>
-                  <span className="picker-row-meta">
-                    <div className="picker-row-name">{p.name}</div>
-                    <div className="picker-row-sub">
-                      <Clock size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
-                      {timeAgo(p.modifiedTime)}
-                    </div>
-                  </span>
-                </button>
-              ))}
+          <div className="picker-empty">
+            <FolderKanban size={36} style={{ opacity: 0.5, marginBottom: 8 }} />
+            <p>No projects yet. Create one to open the IDE.</p>
           </div>
+        ) : (
+          <ul className="project-grid">
+            {projects.map((p) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  className="project-card"
+                  onClick={() => navigate(`/ide/${p.id}`, { state: { projectName: p.name } })}
+                >
+                  <h3>{p.name}</h3>
+                  <p>{p.modifiedTime ? new Date(p.modifiedTime).toLocaleString() : 'Open workspace'}</p>
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </div>
