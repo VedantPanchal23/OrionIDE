@@ -1,4 +1,4 @@
-# Logs
+﻿# Logs
 logs
 *.log
 npm-debug.log*
@@ -12,12 +12,11 @@ dist
 dist-ssr
 *.local
 
-# Test artifacts
-coverage
+# Playwright / Vitest
 test-results
 playwright-report
 blob-report
-playwright/.cache
+coverage
 
 # Editor directories and files
 .vscode/*

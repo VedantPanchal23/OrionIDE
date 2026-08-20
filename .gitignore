@@ -37,3 +37,9 @@ workspace/*
 
 # Coverage reports
 coverage/
+
+# Test artifacts
+**/test-results/
+**/playwright-report/
+**/auth-test-out.txt
+

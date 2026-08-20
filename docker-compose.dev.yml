@@ -1,22 +1,24 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Orion IDE — Development Docker Compose
+# Orion IDE — Development Docker Compose (hot reload)
 # ─────────────────────────────────────────────────────────────────────────────
-# All service ports exposed for local development.
-# Hot reload via nodemon for all backend services (source mounted as volumes).
-# Environment variables loaded from root .env file.
+# Optional alternative to root docker-compose.yml when you want nodemon + Vite HMR.
+# For the normal all-in-one stack (built frontend + nginx), use:
+#   docker compose up --build
+#
+#   docker compose -f docker-compose.dev.yml up --build
+#
+# Frontend: http://localhost:3010
+# Gateway:  http://localhost:3000
 # ─────────────────────────────────────────────────────────────────────────────
-
 
 services:
-  # ── Redis ───────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: orion-redis-dev
     restart: unless-stopped
     ports:
       - "6379:6379"
-    env_file:
-      - .env
+    env_file: [.env]
     command: >
       sh -c 'redis-server --appendonly yes --protected-mode yes
       --requirepass "$${REDIS_PASSWORD:-orion-dev-redis}"'
@@ -30,15 +32,13 @@ services:
     networks:
       - orion-network
 
-  # ── Postgres (users / billing) ──────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
     container_name: orion-postgres-dev
     restart: unless-stopped
     ports:
       - "5432:5432"
-    env_file:
-      - .env
+    env_file: [.env]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-orion}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orion-dev-pg}
@@ -54,48 +54,69 @@ services:
     networks:
       - orion-network
 
-  # ── API Gateway ─────────────────────────────────────────────────────────
   api-gateway:
     build:
-      context: ./services/api-gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/Dockerfile.dev
+      args:
+        SERVICE: api-gateway
+        PORT: "3000"
     container_name: orion-api-gateway-dev
     restart: unless-stopped
     ports:
       - "3000:3000"
-    env_file:
-      - .env
+    env_file: [.env]
     environment:
-      - NODE_ENV=development
-      - PORT=3000
+      NODE_ENV: development
+      PORT: 3000
+      ENTITLEMENTS_FAIL_OPEN: "true"
+      FRONTEND_URL: http://localhost:3010
+      ENABLE_AGENTS_ON_FREE: "true"
+      ENABLE_DEBUGGER_API: "true"
+      ENABLE_DEBUGGER_ON_FREE: "true"
+      RATE_LIMIT_AGENT: "60"
+      RATE_LIMIT_GLOBAL: "600"
+      AUTH_SERVICE_URL: http://auth-service:3001
+      DRIVE_SERVICE_URL: http://drive-service:3002
+      EDITOR_SERVICE_URL: http://editor-service:3003
+      EXECUTION_SERVICE_URL: http://execution-service:3004
+      AGENT_SERVICE_URL: http://agent-service:3005
+      NOTIFICATION_SERVICE_URL: http://notification-service:3006
+      TERMINAL_SERVICE_URL: http://terminal-service:3007
+      LSP_SERVICE_URL: http://lsp-service:3008
+      PISTON_API_URL: http://piston:2000/api/v2
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
     volumes:
       - ./services/api-gateway/src:/app/src
       - ./shared:/shared
-    command: npx nodemon src/app.js
     depends_on:
       redis:
         condition: service_healthy
     networks:
       - orion-network
 
-  # ── Auth Service ────────────────────────────────────────────────────────
   auth-service:
     build:
-      context: ./services/auth-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/Dockerfile.dev
+      args:
+        SERVICE: auth-service
+        PORT: "3001"
     container_name: orion-auth-service-dev
     restart: unless-stopped
     ports:
       - "3001:3001"
-    env_file:
-      - .env
+    env_file: [.env]
     environment:
-      - NODE_ENV=development
-      - PORT=3001
+      NODE_ENV: development
+      PORT: 3001
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
+      DATABASE_URL: postgres://${POSTGRES_USER:-orion}:${POSTGRES_PASSWORD:-orion-dev-pg}@postgres:5432/${POSTGRES_DB:-orion}
+      FRONTEND_URL: http://localhost:3010
+      GOOGLE_CALLBACK_URL: http://localhost:3000/api/auth/google/callback
     volumes:
       - ./services/auth-service/src:/app/src
       - ./shared:/shared
-    command: npx nodemon src/app.js
     depends_on:
       redis:
         condition: service_healthy
@@ -104,76 +125,78 @@ services:
     networks:
       - orion-network
 
-  # ── Drive Service ───────────────────────────────────────────────────────
   drive-service:
     build:
-      context: ./services/drive-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/Dockerfile.dev
+      args:
+        SERVICE: drive-service
+        PORT: "3002"
     container_name: orion-drive-service-dev
     restart: unless-stopped
     ports:
       - "3002:3002"
-    env_file:
-      - .env
+    env_file: [.env]
     environment:
-      - NODE_ENV=development
-      - PORT=3002
+      NODE_ENV: development
+      PORT: 3002
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
     volumes:
       - ./services/drive-service/src:/app/src
       - ./shared:/shared
-    command: npx nodemon src/app.js
     depends_on:
       redis:
         condition: service_healthy
     networks:
       - orion-network
 
-  # ── Editor Service ──────────────────────────────────────────────────────
   editor-service:
     build:
-      context: ./services/editor-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/editor-service/Dockerfile.dev
     container_name: orion-editor-service-dev
     restart: unless-stopped
     ports:
       - "3003:3003"
-    env_file:
-      - .env
+    env_file: [.env]
     environment:
-      - NODE_ENV=development
-      - PORT=3003
-      - TERMINAL_WORKSPACE_ROOT=/workspace
-      - ENABLE_DEBUGGER_API=true
+      NODE_ENV: development
+      PORT: 3003
+      TERMINAL_WORKSPACE_ROOT: /workspace
+      ENABLE_DEBUGGER_API: "true"
+      ENABLE_YJS_COLLAB: "true"
+      ORION_PYTHON: python3
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
     volumes:
       - ./services/editor-service/src:/app/src
       - ./shared:/shared
       - terminal-workspaces:/workspace
-    command: npx nodemon src/app.js
     depends_on:
       redis:
         condition: service_healthy
     networks:
       - orion-network
 
-  # ── Execution Service ──────────────────────────────────────────────────
   execution-service:
     build:
-      context: ./services/execution-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/Dockerfile.dev
+      args:
+        SERVICE: execution-service
+        PORT: "3004"
     container_name: orion-execution-service-dev
     restart: unless-stopped
     ports:
       - "3004:3004"
-    env_file:
-      - .env
+    env_file: [.env]
     environment:
-      - NODE_ENV=development
-      - PORT=3004
-      - PISTON_API_URL=http://piston:2000/api/v2
+      NODE_ENV: development
+      PORT: 3004
+      PISTON_API_URL: http://piston:2000/api/v2
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
     volumes:
       - ./services/execution-service/src:/app/src
       - ./shared:/shared
-    command: npx nodemon src/app.js
     depends_on:
       redis:
         condition: service_healthy
@@ -182,81 +205,125 @@ services:
     networks:
       - orion-network
 
-  # ── Agent Service ──────────────────────────────────────────────────────
   agent-service:
     build:
-      context: ./services/agent-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/Dockerfile.dev
+      args:
+        SERVICE: agent-service
+        PORT: "3005"
     container_name: orion-agent-service-dev
     restart: unless-stopped
     ports:
       - "3005:3005"
-    env_file:
-      - .env
+    env_file: [.env]
     environment:
-      - NODE_ENV=development
-      - PORT=3005
+      NODE_ENV: development
+      PORT: 3005
+      DRIVE_SERVICE_URL: http://drive-service:3002
+      EXECUTION_SERVICE_URL: http://execution-service:3004
+      NOTIFICATION_SERVICE_URL: http://notification-service:3006
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
     volumes:
       - ./services/agent-service/src:/app/src
       - ./shared:/shared
-    command: npx nodemon src/app.js
     depends_on:
       redis:
         condition: service_healthy
     networks:
       - orion-network
 
-  # ── Notification Service ───────────────────────────────────────────────
   notification-service:
     build:
-      context: ./services/notification-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/Dockerfile.dev
+      args:
+        SERVICE: notification-service
+        PORT: "3006"
     container_name: orion-notification-service-dev
     restart: unless-stopped
     ports:
       - "3006:3006"
-    env_file:
-      - .env
+    env_file: [.env]
     environment:
-      - NODE_ENV=development
-      - PORT=3006
+      NODE_ENV: development
+      PORT: 3006
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
     volumes:
       - ./services/notification-service/src:/app/src
       - ./shared:/shared
-    command: npx nodemon src/app.js
     depends_on:
       redis:
         condition: service_healthy
     networks:
       - orion-network
 
-  # ── Terminal Service ──────────────────────────────────────────────────
   terminal-service:
     build:
-      context: ./services/terminal-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/terminal-service/Dockerfile.dev
     container_name: orion-terminal-service-dev
     restart: unless-stopped
     ports:
       - "3007:3007"
-    env_file:
-      - .env
+    env_file: [.env]
     environment:
-      - NODE_ENV=development
-      - PORT=3007
-      - TERMINAL_WORKSPACE_ROOT=/workspace
-      - DRIVE_SERVICE_URL=http://drive-service:3002
+      NODE_ENV: development
+      PORT: 3007
+      TERMINAL_WORKSPACE_ROOT: /workspace
+      DRIVE_SERVICE_URL: http://drive-service:3002
+      AUTH_SERVICE_URL: http://auth-service:3001
+      REDIS_URL: redis://:${REDIS_PASSWORD:-orion-dev-redis}@redis:6379
     volumes:
       - ./services/terminal-service/src:/app/src
       - ./shared:/shared
       - terminal-workspaces:/workspace
-    command: npx nodemon src/app.js
     depends_on:
       - drive-service
+      - auth-service
     networks:
       - orion-network
 
-  # ── Piston (Code Execution Sandbox) ─────────────────────────────────────
+  lsp-service:
+    build:
+      context: .
+      dockerfile: services/lsp-service/Dockerfile.dev
+    container_name: orion-lsp-service-dev
+    restart: unless-stopped
+    ports:
+      - "3008:3008"
+    env_file: [.env]
+    environment:
+      NODE_ENV: development
+      PORT: 3008
+      TERMINAL_WORKSPACE_ROOT: /workspace
+      LSP_DEBUG: "0"
+    volumes:
+      - ./services/lsp-service/src:/app/src
+      - ./shared:/shared
+      - terminal-workspaces:/workspace
+    networks:
+      - orion-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: orion-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "3010:3010"
+    environment:
+      API_PROXY_TARGET: http://api-gateway:3000
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.js:/app/vite.config.js
+    depends_on:
+      - api-gateway
+    networks:
+      - orion-network
+
   piston:
     image: ghcr.io/engineer-man/piston
     container_name: orion-piston-dev
@@ -267,22 +334,20 @@ services:
     tmpfs:
       - /piston/jobs:exec,size=256m
     environment:
-      - OUTPUT_MAX_SIZE=65536
-      - MAX_PROCESS_COUNT=64
-      - RUN_TIMEOUT=15000
-      - COMPILE_TIMEOUT=15000
+      OUTPUT_MAX_SIZE: "65536"
+      MAX_PROCESS_COUNT: "64"
+      RUN_TIMEOUT: "15000"
+      COMPILE_TIMEOUT: "15000"
     volumes:
       - piston-packages:/piston/packages
     networks:
       - orion-network
 
-# ── Networks ──────────────────────────────────────────────────────────────
 networks:
   orion-network:
     name: orion-network
     driver: bridge
 
-# ── Volumes ───────────────────────────────────────────────────────────────
 volumes:
   redis-data:
     name: orion-redis-data

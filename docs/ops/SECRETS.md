@@ -9,7 +9,7 @@
 | `INTERNAL_SECRET` / `DRIVE_SERVICE_SECRET` | all services | must match |
 | `REDIS_PASSWORD` + `REDIS_URL` | all | URL must embed password |
 | `POSTGRES_PASSWORD` + `DATABASE_URL` | auth | users/billing |
-| `GROQ_API_KEY` / `OPENROUTER_API_KEY` | agents | Pro feature |
+| `GROQ_API_KEY` / `OPENROUTER_API_KEY` | agents | Server-side fallback; users can BYOK in Settings |
 | `ORION_ACCESS_TOKEN` | CI smoke only | GitHub Actions secret |
 
 Optional Stripe: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO`, `STRIPE_PRICE_TEAM`.
@@ -18,9 +18,13 @@ Optional Stripe: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_PRO
 
 | Flag | Default | Meaning |
 |------|---------|---------|
-| `ENABLE_YJS_COLLAB` | `false` | CRDT rooms off until sync is boring |
+| `ENABLE_YJS_COLLAB` | `false` | CRDT rooms off until Drive sync is solid |
 | `ENABLE_DEBUGGER_API` | `true` | DAP session API + Python/Node adapters |
-| `ENABLE_AGENTS` | `true` | Master switch; still Pro-gated |
+| `ENABLE_DEBUGGER_ON_FREE` | `true` | Debugger available on free plan (OSS same-UI) |
+| `ENABLE_AGENTS` | `true` | Master switch for agent pipeline |
+| `ENABLE_AGENTS_ON_FREE` | `true` | Agents available on free plan (OSS same-UI) |
+
+There is no separate “Upgrade” product UI — one IDE for all plans. Quotas still come from `shared/constants/plans.js`.
 
 ## Backups
 
@@ -47,6 +51,9 @@ docker compose -f docker-compose.dev.yml -f infrastructure/docker-compose.stagin
 ```powershell
 $env:ORION_ACCESS_TOKEN = node scripts/mint-access-token.mjs --print
 node scripts/smoke-happy-path.mjs
+node scripts/e2e-crud.mjs
+node scripts/smoke-agent.mjs
+node scripts/smoke-debug.mjs
 ```
 
 Or paste a JWT from a fresh browser login:
